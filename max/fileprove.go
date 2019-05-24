@@ -108,6 +108,8 @@ func (this *MaxService) proveFileService() {
 	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	for {
 		select {
+		case <-this.killprove:
+			return
 		case <-ticker.C:
 			if this.chain == nil {
 				break

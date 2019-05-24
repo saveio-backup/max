@@ -81,6 +81,7 @@ type MaxService struct {
 	repo         repo.Repo
 	chain        *sdk.Chain
 	config       *FSConfig
+	killprove    chan struct{}
 }
 
 type FSConfig struct {
@@ -248,6 +249,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			ChunkSize: config.ChunkSize,
 			GcPeriod:  config.GcPeriod,
 		},
+		killprove: make(chan struct{}),
 	}
 
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
@@ -861,7 +863,12 @@ func (this *MaxService) Close() error {
 	if err != nil {
 		return err
 	}
+	this.StopFileProve()
 	return nil
+}
+
+func (this *MaxService) StopFileProve() {
+	close(this.killprove)
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
