@@ -237,7 +237,7 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 
 	// the filepaht.HasPrefix is depreciated, need to check for the case eg, root: ./fs, fullpath ./fstext.txt
 	// need to gurantee the fullpath and root is absolute path
-	if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) || b.PosInfo.FullPath[len(f.root)] != filepath.Separator {
+	if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) || (b.PosInfo.FullPath[len(f.root)] != filepath.Separator && f.root[len(f.root)-1] != filepath.Separator) {
 		return fmt.Errorf("cannot add filestore references outside ont-ipfs root (%s)", f.root)
 	}
 
