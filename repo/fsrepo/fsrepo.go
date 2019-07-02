@@ -176,7 +176,7 @@ func open(repoPath string) (repo.Repo, error) {
 	}
 
 	if r.config.Experimental.FilestoreEnabled {
-		r.filemgr = filestore.NewFileManager(r.ds, filepath.Dir(r.path))
+		r.filemgr = filestore.NewFileManager(r.ds)
 	}
 
 	keepLocked = true

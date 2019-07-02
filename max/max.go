@@ -86,7 +86,6 @@ type MaxService struct {
 
 type FSConfig struct {
 	RepoRoot   string
-	FsRoot     string
 	FsType     FSType
 	ChunkSize  uint64
 	GcPeriod   string
@@ -127,23 +126,6 @@ func setMaxStorage(repo repo.Repo, maxStorage string) error {
 
 	config.Datastore.StorageMax = maxStorage
 	return nil
-}
-
-func getFullpath(path string) (string, error) {
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
-
-	if !fileInfo.IsDir() {
-		return "", errors.New("fsRoot not a dir")
-	}
-
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	return absPath, nil
 }
 
 func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
@@ -213,11 +195,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	var pinner pin.Pinner
 
 	if config.FsType == FS_FILESTORE {
-		absFSRoot, err := getFullpath(config.FsRoot)
-		if err != nil {
-			return nil, err
-		}
-		filemanager = fstore.NewFileManager(d, absFSRoot)
+		filemanager = fstore.NewFileManager(d)
 		// hash security
 		filestore = fstore.NewFilestore(bs, filemanager)
 		blockstore = bstore.NewGCBlockstore(filestore, GCLocker)
@@ -244,7 +222,6 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		chain:       chain,
 		config: &FSConfig{
 			RepoRoot:  config.RepoRoot,
-			FsRoot:    config.FsRoot,
 			FsType:    config.FsType,
 			ChunkSize: config.ChunkSize,
 			GcPeriod:  config.GcPeriod,

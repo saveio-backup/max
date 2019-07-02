@@ -148,16 +148,53 @@ func getCurrentDirectory() string {
 	return strings.Replace(dir, "\\", "/", -1)
 }
 
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func RandStringBytes(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
+}
+
+func checkFileContentWithOffset(max *MaxService, cids []*cid.Cid, offsets []uint64, buf []byte) error {
+	var index int
+	for i, c := range cids {
+		blk, err := max.GetBlock(c)
+		if err != nil {
+			return err
+		}
+
+		// all nodes should be raw nodes
+		_, err = ml.DecodeProtobufBlock(blk)
+		if err == nil {
+			return errors.New("all nodes should be rawnodes")
+		}
+
+		start := offsets[i]
+		end := start + CHUNK_SIZE
+		if end > uint64(len(buf)) {
+			end = uint64(len(buf))
+		}
+
+		if !bytes.Equal(blk.RawData(), buf[start:end]) {
+			return errors.New("data didnot match on the way out")
+		}
+		index++
+	}
+
+	return nil
+}
+
 type Config struct {
-	repoRoot    string
-	createTmp   bool // if true create tmp dir and use as the repoRoot , if false, repoRoot should be used for the api
-	fsRoot      string
-	useSameRoot bool // if true, fsRoot is the same as the repoRoot, if false use fsRoot as parameter
-	fsType      FSType
-	chunkSize   uint64
-	gcPeriod    string
-	chain       *sdk.Chain
-	maxStorage  string
+	repoRoot   string
+	createTmp  bool // if true create tmp dir and use as the repoRoot , if false, repoRoot should be used for the api
+	fsType     FSType
+	chunkSize  uint64
+	gcPeriod   string
+	chain      *sdk.Chain
+	maxStorage string
 }
 
 var repoPaths = []string{
@@ -170,24 +207,18 @@ var repoPaths = []string{
 	"version",
 }
 
-func initFsFromConfig(config *Config) (max *MaxService, repoRoot string, fsRoot string, err error) {
+func initFsFromConfig(config *Config) (max *MaxService, repoRoot string, err error) {
 	repoRoot = config.repoRoot
-	fsRoot = config.fsRoot
 
 	if config.createTmp {
 		repoRoot, err = ioutil.TempDir("", "max-test")
 		if err != nil {
-			return nil, "", "", err
+			return nil, "", err
 		}
-	}
-
-	if config.useSameRoot {
-		fsRoot = repoRoot
 	}
 
 	fsConfig := &FSConfig{
 		RepoRoot:   repoRoot,
-		FsRoot:     fsRoot,
 		FsType:     config.fsType,
 		ChunkSize:  config.chunkSize,
 		GcPeriod:   config.gcPeriod,
@@ -196,10 +227,10 @@ func initFsFromConfig(config *Config) (max *MaxService, repoRoot string, fsRoot 
 
 	max, err = NewMaxService(fsConfig, config.chain)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", err
 	}
 
-	return max, repoRoot, fsRoot, err
+	return max, repoRoot, err
 }
 func TestNewMaxServiceParams(t *testing.T) {
 	var services []*MaxService
@@ -219,44 +250,44 @@ func TestNewMaxServiceParams(t *testing.T) {
 
 	cases := map[*Config]bool{
 		// normal case
-		&Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
+		&Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
 
 		//repoRoot tests
-		&Config{"", false, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                   false,
-		&Config{"./", false, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                 true,
-		&Config{"/", false, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                  false,
-		&Config{"./tmp", false, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                              true,
-		&Config{getCurrentDirectory() + "/tmp2/tmp3", false, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
+		&Config{"", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                   false,
+		&Config{"./", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                 true,
+		&Config{"/", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                                  false,
+		&Config{"./tmp", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:                              true,
+		&Config{getCurrentDirectory() + "/tmp2/tmp3", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
 
 		// fsType tests
-		&Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:  true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
-		&Config{"", true, "", true, 2, CHUNK_SIZE, GC_PERIOD, nil, ""}:             false,
-		&Config{"", true, "", true, 100, CHUNK_SIZE, GC_PERIOD, nil, ""}:           false,
+		&Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:  true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}: true,
+		&Config{"", true, 2, CHUNK_SIZE, GC_PERIOD, nil, ""}:             false,
+		&Config{"", true, 100, CHUNK_SIZE, GC_PERIOD, nil, ""}:           false,
 
 		// fsRoot, chunksize are used by filestore and will not be checked in MaxService
 		// gcPeriod tests, gc only applys to blockstore
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, "0", nil, ""}:   true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, "0s", nil, ""}:  true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, "10s", nil, ""}: true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, "10m", nil, ""}: true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, "10h", nil, ""}: true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, "0", nil, ""}:   true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, "0s", nil, ""}:  true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, "10s", nil, ""}: true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, "10m", nil, ""}: true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, "10h", nil, ""}: true,
 
 		// maxStorage test
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "0"}:    false,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:     true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "100M"}: true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "100S"}: false,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10G"}:  true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10T"}:  true,
-		&Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10a"}:  false,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "0"}:    false,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}:     true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "100M"}: true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "100S"}: false,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10G"}:  true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10T"}:  true,
+		&Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, "10a"}:  false,
 	}
 
 	os.Mkdir("./tmp", 777)
 
 	for config, expected := range cases {
 
-		max, _, _, err := initFsFromConfig(config)
+		max, _, err := initFsFromConfig(config)
 		if err == nil && max != nil {
 			services = append(services, max)
 		}
@@ -274,7 +305,7 @@ func TestNewMaxServiceRepoInit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	_, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,14 +317,14 @@ func TestNewMaxServiceRepoInitAlready(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	max.repo.Close()
 
-	max, err = NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,12 +335,12 @@ func TestNewMaxServiceRepoLocked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	_, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	_, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -328,7 +359,6 @@ type FileConfig struct {
 type Result struct {
 	max      *MaxService
 	repoRoot string
-	fsRoot   string
 	root     ipld.Node
 	list     []*helpers.UnixfsNode
 	buf      []byte // file content with prefix
@@ -340,7 +370,7 @@ func addFileAndCheckFileContent(initCfg *Config, fileCfg *FileConfig) (*Result, 
 	var err error
 	var buf []byte
 
-	max, repoRoot, fsRoot, err := initFsFromConfig(initCfg)
+	max, repoRoot, err := initFsFromConfig(initCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +389,11 @@ func addFileAndCheckFileContent(initCfg *Config, fileCfg *FileConfig) (*Result, 
 
 		// when path is empty, create a temp file, otherwise create in the path
 		if fileCfg.path == "" {
-			fname, err = makeTempFile(fsRoot, buf)
+			testdir, err := ioutil.TempDir("", "filestore-test")
+			if err != nil {
+				return nil, err
+			}
+			fname, err = makeTempFile(testdir, buf)
 			if err != nil {
 				return nil, err
 			}
@@ -432,13 +466,13 @@ func addFileAndCheckFileContent(initCfg *Config, fileCfg *FileConfig) (*Result, 
 		return nil, err
 	}
 
-	result := &Result{max, repoRoot, fsRoot, root, list, getBufWithPrefix(buf, fileCfg.prefix)}
+	result := &Result{max, repoRoot, root, list, getBufWithPrefix(buf, fileCfg.prefix)}
 
 	return result, nil
 }
 
 func TestNodesFromFileNormal(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	_, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -447,6 +481,8 @@ func TestNodesFromFileNormal(t *testing.T) {
 	}
 }
 
+/*
+// this case is not applicable anymore since all files can be added to file store
 func TestNodesFromFileSamePrefix(t *testing.T) {
 	os.Mkdir("./fs", 777)
 
@@ -473,11 +509,12 @@ func TestNodesFromFileSamePrefix(t *testing.T) {
 		}
 	}
 }
+*/
 
 func TestNodeFromFileNotExist(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
-	max, _, _, err := initFsFromConfig(initCfg)
+	max, _, err := initFsFromConfig(initCfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +526,7 @@ func TestNodeFromFileNotExist(t *testing.T) {
 }
 
 func TestNodesFromFileParams(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	defaultFileConfig := []*FileConfig{&FileConfig{"", true, 20 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}}
 
 	cases := map[*Config][]*FileConfig{
@@ -503,10 +540,10 @@ func TestNodesFromFileParams(t *testing.T) {
 		},
 
 		//differnet chunk size
-		&Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE / 256, GC_PERIOD, nil, ""}: defaultFileConfig,
-		&Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE / 16, GC_PERIOD, nil, ""}:  defaultFileConfig,
-		&Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE / 2, GC_PERIOD, nil, ""}:   defaultFileConfig,
-		&Config{"", true, "", true, FS_FILESTORE, 2 * CHUNK_SIZE, GC_PERIOD, nil, ""}:   defaultFileConfig,
+		&Config{"", true, FS_FILESTORE, CHUNK_SIZE / 256, GC_PERIOD, nil, ""}: defaultFileConfig,
+		&Config{"", true, FS_FILESTORE, CHUNK_SIZE / 16, GC_PERIOD, nil, ""}:  defaultFileConfig,
+		&Config{"", true, FS_FILESTORE, CHUNK_SIZE / 2, GC_PERIOD, nil, ""}:   defaultFileConfig,
+		&Config{"", true, FS_FILESTORE, 2 * CHUNK_SIZE, GC_PERIOD, nil, ""}:   defaultFileConfig,
 
 		// test encrypt file
 		defaultConfig: []*FileConfig{
@@ -529,8 +566,8 @@ func TestNodesFromFileParams(t *testing.T) {
 }
 
 func TestIsFileStore(t *testing.T) {
-	cfg := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
-	max, _, _, err := initFsFromConfig(cfg)
+	cfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	max, _, err := initFsFromConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,8 +576,8 @@ func TestIsFileStore(t *testing.T) {
 		t.Fatalf("IsFileStore check error")
 	}
 
-	cfg = &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
-	max, _, _, err = initFsFromConfig(cfg)
+	cfg = &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	max, _, err = initFsFromConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -563,7 +600,7 @@ func TestPutGetTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,16 +675,6 @@ func TestGetTagIndex(t *testing.T) {
 
 }
 
-const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
-func RandStringBytes(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return string(b)
-}
-
 func TestAddFile(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
 
@@ -655,7 +682,7 @@ func TestAddFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, "", FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -687,7 +714,7 @@ func TestAddFile(t *testing.T) {
 
 // test deleteFIle cannot delete immediately when periodic gc is set
 func TestDeleteFilePeriodic(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -715,7 +742,7 @@ func TestDeleteFilePeriodic(t *testing.T) {
 	}
 }
 func TestDeleteFileDirect(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, nil, ""}
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -744,7 +771,7 @@ func TestDeleteFileDirect(t *testing.T) {
 }
 
 func TestDeleteFileFileStore(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, nil, ""}
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -762,7 +789,7 @@ func TestDeleteFileFileStore(t *testing.T) {
 }
 
 func TestPeriodicGC(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_TEST, nil, "26M"}
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_TEST, nil, "26M"}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -806,7 +833,7 @@ func TestShareBlocksDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, "", FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -891,7 +918,7 @@ func TestSameFileWithDifferentOwnerDeleteFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, "", FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_IMMEDIATE, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -964,7 +991,7 @@ func TestSameFileWithDifferentOwnerDeleteFile(t *testing.T) {
 	}
 }
 func TestGetAllCids(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size for blockstore
@@ -998,7 +1025,7 @@ func TestGetAllCids(t *testing.T) {
 }
 
 func TestGetAllCidsWithOffset(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size for blockstore
@@ -1043,7 +1070,7 @@ func TestGetAllCidsWithOffset(t *testing.T) {
 }
 
 func TestGetAllCidsFileStore(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size for blockstore
@@ -1120,7 +1147,7 @@ func compareCids(root ipld.Node, list []*helpers.UnixfsNode, expected []*cid.Cid
 }
 
 func TestWriteFileNorm(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size
@@ -1169,7 +1196,7 @@ func TestWriteFileNorm(t *testing.T) {
 }
 
 func TestWriteFileFileStore(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -1184,7 +1211,7 @@ func TestWriteFileFileStore(t *testing.T) {
 	}
 }
 func TestWriteFileInvalidPath(t *testing.T) {
-	initCfg := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -1213,7 +1240,7 @@ func compareByteSlice(a []byte, b []byte) bool {
 	return true
 }
 func TestGetAllKeysChan(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size
@@ -1267,37 +1294,8 @@ func TestGetAllKeysChan(t *testing.T) {
 	}
 }
 
-func checkFileContentWithOffset(max *MaxService, cids []*cid.Cid, offsets []uint64, buf []byte) error {
-	var index int
-	for i, c := range cids {
-		blk, err := max.GetBlock(c)
-		if err != nil {
-			return err
-		}
-
-		// all nodes should be raw nodes
-		_, err = ml.DecodeProtobufBlock(blk)
-		if err == nil {
-			return errors.New("all nodes should be rawnodes")
-		}
-
-		start := offsets[i]
-		end := start + CHUNK_SIZE
-		if end > uint64(len(buf)) {
-			end = uint64(len(buf))
-		}
-
-		if !bytes.Equal(blk.RawData(), buf[start:end]) {
-			return errors.New("data didnot match on the way out")
-		}
-		index++
-	}
-
-	return nil
-}
-
 func TestPutBlockForFileStore(t *testing.T) {
-	defaultConfig := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	defaultConfig := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 
 	cases := map[*Config][]*FileConfig{
 		//different file size
@@ -1332,7 +1330,7 @@ func TestPutBlockForFileStore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			max2, err := NewMaxService(&FSConfig{testdir2, testdir2, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+			max2, err := NewMaxService(&FSConfig{testdir2, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1413,7 +1411,7 @@ func TestPutBlockForFileStore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			max2, err = NewMaxService(&FSConfig{testdir2, testdir2, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+			max2, err = NewMaxService(&FSConfig{testdir2, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1527,7 +1525,7 @@ func decryptFileAndCheckContent(file string, password string, outPath string, bu
 
 func TestSaveFilePrefixForFileStore(t *testing.T) {
 
-	initCfg := &Config{"", true, "", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 
 	result, err := addFileAndCheckFileContent(initCfg, fileCfg)
@@ -1545,7 +1543,7 @@ func TestSaveFilePrefixForFileStore(t *testing.T) {
 	}
 
 	// close the repo and read file again to verify the prefix has been saved
-	max, err = NewMaxService(&FSConfig{result.repoRoot, result.fsRoot, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err = NewMaxService(&FSConfig{result.repoRoot, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1571,7 +1569,7 @@ func TestSaveGetProveTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1609,7 +1607,7 @@ func TestSaveGetProveTasks(t *testing.T) {
 	//try get the provetasks after reopen repo
 	max.repo.Close()
 
-	max, err = NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1632,7 +1630,7 @@ func TestDeleteProveTask(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	max, err := NewMaxService(&FSConfig{testdir, testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

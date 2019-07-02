@@ -30,7 +30,6 @@ var FilestorePrefix = ds.NewKey("filestore")
 // (a path and an offset).
 type FileManager struct {
 	ds            ds.Batching
-	root          string
 	pathPrefixMap map[string]string // filepath -> filePrefix, need to persist
 	sync.Mutex
 }
@@ -53,8 +52,8 @@ func (c CorruptReferenceError) Error() string {
 // NewFileManager initializes a new file manager with the given
 // datastore and root. All FilestoreNodes paths are relative to the
 // root path given here, which is prepended for any operations.
-func NewFileManager(ds ds.Batching, root string) *FileManager {
-	return &FileManager{ds: dsns.Wrap(ds, FilestorePrefix), root: root, pathPrefixMap: make(map[string]string)}
+func NewFileManager(ds ds.Batching) *FileManager {
+	return &FileManager{ds: dsns.Wrap(ds, FilestorePrefix), pathPrefixMap: make(map[string]string)}
 }
 
 // AllKeysChan returns a channel from which to read the keys stored in
@@ -153,8 +152,7 @@ func unmarshalDataObj(o interface{}) (*pb.DataObj, error) {
 
 // reads and verifies the block
 func (f *FileManager) readDataObj(c *cid.Cid, d *pb.DataObj) ([]byte, error) {
-	p := filepath.FromSlash(d.GetFilePath())
-	abspath := filepath.Join(f.root, p)
+	abspath := filepath.FromSlash(d.GetFilePath())
 
 	fi, err := os.Open(abspath)
 	if os.IsNotExist(err) {
@@ -237,16 +235,23 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 
 	// the filepaht.HasPrefix is depreciated, need to check for the case eg, root: ./fs, fullpath ./fstext.txt
 	// need to gurantee the fullpath and root is absolute path
-	if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) || (b.PosInfo.FullPath[len(f.root)] != filepath.Separator && f.root[len(f.root)-1] != filepath.Separator) {
-		return fmt.Errorf("cannot add filestore references outside ont-ipfs root (%s)", f.root)
-	}
+	/*
+			if !filepath.HasPrefix(b.PosInfo.FullPath, f.root) || (b.PosInfo.FullPath[len(f.root)] != filepath.Separator && f.root[len(f.root)-1] != filepath.Separator) {
+				return fmt.Errorf("cannot add filestore references outside ont-ipfs root (%s)", f.root)
+			}
 
-	p, err := filepath.Rel(f.root, b.PosInfo.FullPath)
+		p, err := filepath.Rel(f.root, b.PosInfo.FullPath)
+		if err != nil {
+			return err
+		}
+	*/
+
+	abspath, err := filepath.Abs(b.PosInfo.FullPath)
 	if err != nil {
 		return err
 	}
 
-	dobj.FilePath = proto.String(filepath.ToSlash(p))
+	dobj.FilePath = proto.String(filepath.ToSlash(abspath))
 	dobj.Offset = proto.Uint64(b.PosInfo.Offset)
 	dobj.Size_ = proto.Uint64(uint64(len(b.RawData())))
 
