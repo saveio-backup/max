@@ -326,7 +326,7 @@ type FileConfig struct {
 }
 
 type Result struct {
-	max    *MaxService
+	max      *MaxService
 	repoRoot string
 	fsRoot   string
 	root     ipld.Node
@@ -448,6 +448,13 @@ func TestNodesFromFileNormal(t *testing.T) {
 }
 
 func TestNodesFromFileSamePrefix(t *testing.T) {
+	os.Mkdir("./fs", 777)
+
+	defer func() {
+		os.RemoveAll("./fs")
+		os.Remove("./fstest.txt")
+	}()
+
 	initCfg := &Config{"", true, "./fs", false, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 	fileCfgPrefixGood := &FileConfig{"./fs/test.txt", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
 	fileCfgPrefixBad := &FileConfig{"./fstest.txt", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
