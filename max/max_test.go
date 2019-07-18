@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/saveio/max/importer/helpers"
+	"github.com/saveio/themis/common/log"
+
 	"github.com/saveio/max/max/fsstore"
 	ml "github.com/saveio/max/merkledag"
 	sdk "github.com/saveio/themis-go-sdk"

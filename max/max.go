@@ -27,8 +27,10 @@ import (
 
 	gc "github.com/saveio/max/pin/gc"
 
-	logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
+	//logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
 	offline "gx/ipfs/QmWM5HhdG5ZQNyHQ5XhMdGmV9CvLpFynQfGpTxN2MEM7Lc/go-ipfs-exchange-offline"
+
+	"github.com/saveio/themis/common/log"
 
 	fstore "github.com/saveio/max/filestore"
 
@@ -51,7 +53,7 @@ import (
 	sdk "github.com/saveio/themis-go-sdk"
 )
 
-var log = logging.Logger("max")
+//var log = logging.Logger("max")
 var once sync.Once
 
 type FSType int
@@ -107,61 +109,73 @@ func initRepoConfig() (*config.Config, error) {
 func setMaxStorage(repo repo.Repo, maxStorage string) error {
 	size, err := humanize.ParseBytes(maxStorage)
 	if err != nil {
+		log.Errorf("[setMaxStorage] ParseBytes for max storage error : %s", err)
 		return err
 	}
 
 	if size <= 0 {
+		log.Errorf("[setMaxStorage] wrong size: %d", size)
 		return errors.New("max storage value wrong")
 	}
 
 	err = repo.SetConfigKey("Datastore.StorageMax", maxStorage)
 	if err != nil {
+		log.Errorf("[setMaxStorage] set max storage error: %s", err)
 		return err
 	}
 
 	config, err := repo.Config()
 	if err != nil {
+		log.Errorf("[setMaxStorage] get config error : %s", err)
 		return err
 	}
 
 	config.Datastore.StorageMax = maxStorage
+	log.Debugf("[setMaxStorage] set max storage : %s", maxStorage)
 	return nil
 }
 
 func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	if config.FsType != FS_BLOCKSTORE && config.FsType != FS_FILESTORE {
+		log.Errorf("[NewMaxService] wrong fs type : %d", config.FsType)
 		return nil, errors.New("wrong fs type")
 	}
 
 	repoConfig, err := initRepoConfig()
 	if err != nil {
+		log.Errorf("[NewMaxService] initRepoConfig error : %s", err)
 		return nil, err
 	}
 
 	locked, err := fsrepo.LockedByOtherProcess(config.RepoRoot)
 	if err != nil {
+		log.Errorf("[NewMaxService] LockedByOtherProcess error : %s", err)
 		return nil, err
 	}
 
 	if locked {
+		log.Errorf("[NewMaxService] repo locked by other process : %s", err)
 		return nil, errors.New("repo locked by other process")
 	}
 
 	if !fsrepo.IsInitialized(config.RepoRoot) {
 		err := fsrepo.Init(config.RepoRoot, repoConfig)
 		if err != nil {
+			log.Errorf("[NewMaxService] repo init error : %s", err)
 			return nil, err
 		}
 	}
 
 	repo, err := fsrepo.Open(config.RepoRoot)
 	if err != nil {
+		log.Errorf("[NewMaxService] open repo error : %s", err)
 		return nil, err
 	}
 
 	if config.MaxStorage != "" {
 		err = setMaxStorage(repo, config.MaxStorage)
 		if err != nil {
+			log.Errorf("[NewMaxService] set max storage error : %s", err)
 			return nil, err
 		}
 	}
@@ -184,6 +198,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	opts := bstore.DefaultCacheOpts()
 	cbs, err := bstore.CachedBlockstore(context.TODO(), bs, opts)
 	if err != nil {
+		log.Errorf("[NewMaxService] create cache block store error : %s", err)
 		return nil, err
 	}
 
@@ -233,15 +248,18 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	if config.FsType == FS_BLOCKSTORE {
 		err = startPeriodicGC(context.TODO(), repo, config.GcPeriod, pinner, blockstore)
 		if err != nil {
+			log.Errorf("[NewMaxService] startPeriodicGC error", err)
 			return nil, err
 		}
 		err = service.loadPDPTasksOnStartup()
 		if err != nil {
+			log.Errorf("[NewMaxService] loadPDPTasksOnStartup error: %s", err)
 			return nil, err
 		}
 	} else {
 		err = service.loadFilePrefixesOnStartup()
 		if err != nil {
+			log.Errorf("[NewMaxService] loadFilePrefixesOnStartup error: %s", err)
 			return nil, err
 		}
 	}
@@ -261,11 +279,13 @@ func isTooManyFDError(err error) bool {
 func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
 	fileName, err := filepath.Abs(fileName)
 	if err != nil {
+		log.Errorf("[NodesFromFile] get abs path error for %s, err: %s", fileName, err)
 		return nil, nil, err
 	}
 
 	root, list, err := this.GetAllNodesFromFile(fileName, filePrefix, encrypt, password)
 	if err != nil {
+		log.Errorf("[NodesFromFile] GetAllNodesFromFile error : %s", err)
 		return root, list, err
 	}
 
@@ -273,6 +293,7 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 		if !encrypt {
 			_, _, err = this.buildFileStoreForFile(fileName, filePrefix, root, list)
 			if err != nil {
+				log.Errorf("[NodesFromFile] buildFileStoreForFile error : %s", err)
 				return nil, nil, err
 			}
 		} else {
@@ -280,17 +301,20 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 			// encrypted file, the file is not pinned becasue it will be useless when upload file finish
 			err = this.blockstore.Put(root)
 			if err != nil {
+				log.Errorf("[NodesFromFile] put root to block store error : %s", err)
 				return nil, nil, err
 			}
 
 			for _, node := range list {
 				dagNode, err := node.GetDagNode()
 				if err != nil {
+					log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
 					return nil, nil, err
 				}
 
 				err = this.blockstore.Put(dagNode)
 				if err != nil {
+					log.Errorf("[NodesFromFile] put dagNode to block store error : %s", err)
 					return nil, nil, err
 				}
 			}
@@ -304,6 +328,7 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 	for _, item := range list {
 		lNode, err := item.GetDagNode()
 		if err != nil {
+			log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
 			return nil, nil, errors.New("item getdagnode failed")
 		}
 		key := lNode.Cid().String()
@@ -326,6 +351,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 	if encrypt {
 		encryptedR, err := crypto.AESEncryptFileReader(file, password)
 		if err != nil {
+			log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
 			return nil, nil, err
 		}
 		reader = encryptedR
@@ -336,16 +362,19 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 
 	chnk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: create chunker error : %s", err)
 		return nil, nil, err
 	}
 
 	prefix, err := merkledag.PrefixForCidVersion(cidVer)
 	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: PrefixForCidVersion error : %s", err)
 		return nil, nil, err
 	}
 
 	hashFunCode, _ := mh.Names[strings.ToLower(hashFunStr)]
 	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: get hashFunCode error : %s", err)
 		return nil, nil, err
 	}
 	prefix.MhType = hashFunCode
@@ -364,6 +393,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 
 	root, list, err = balanced.LayoutAndGetNodes(db)
 	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: LayoutAndGetNodes error : %s", err)
 		return root, list, err
 	}
 
@@ -378,6 +408,7 @@ func (this *MaxService) buildFileStoreForFile(fileName, filePrefix string, root 
 
 	err := this.SetFilePrefix(fileName, filePrefix)
 	if err != nil {
+		log.Errorf("[buildFileStoreForFile] SetFilePrefix error : %s", err)
 		return nil, nil, err
 	}
 
@@ -407,6 +438,7 @@ func (this *MaxService) buildFileStoreForFile(fileName, filePrefix string, root 
 		// since when get the cid, the content is the same even the posinfo not same
 		err := this.blockstore.Put(n)
 		if err != nil {
+			log.Errorf("[buildFileStoreForFile] put block to block store error : %s", err)
 			return nil, nil, err
 		}
 	}
@@ -424,6 +456,7 @@ func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
 
 func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error {
 	if !this.IsFileStore() {
+		log.Errorf("[setFilePrefix] not a filestore")
 		return errors.New("PutBlockForFilestore can be only called on filestore")
 	}
 
@@ -434,6 +467,7 @@ func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error 
 func (this *MaxService) SetFilePrefix(fileName string, filePrefix string) error {
 	err := this.setFilePrefix(fileName, filePrefix)
 	if err != nil {
+		log.Errorf("[SetFilePrefix] setFilePrefix error: %s", err)
 		return err
 	}
 
@@ -442,6 +476,7 @@ func (this *MaxService) SetFilePrefix(fileName string, filePrefix string) error 
 
 func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error {
 	if !this.IsFileStore() {
+		log.Errorf("[saveFilePrefix] not a filestore")
 		return errors.New("saveFilePrefix can be only called on filestore")
 	}
 
@@ -452,6 +487,7 @@ func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error
 
 func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 	if !this.IsFileStore() {
+		log.Errorf("[getFilePrefixes] not a filestore")
 		return nil, errors.New("loadFilePrefixes can be only called on filestore")
 	}
 
@@ -459,8 +495,10 @@ func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 	if err != nil {
 		// TO Check what will be returned if no matching data
 		if err == dbstore.ErrNotFound {
+			log.Debugf("[getFilePrefixes] GetFilePrefixes not found error")
 			return nil, nil
 		}
+		log.Errorf("[getFilePrefixes] GetFilePrefixes error : %s", err)
 		return nil, err
 	}
 
@@ -476,12 +514,14 @@ func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 func (this *MaxService) loadFilePrefixesOnStartup() error {
 	prefixes, err := this.getFilePrefixes()
 	if err != nil {
+		log.Errorf("[loadFilePrefixesOnStartup] getFilePrefixes error : %s", err)
 		return err
 	}
 
 	for filepath, prefix := range prefixes {
 		err = this.setFilePrefix(filepath, prefix)
 		if err != nil {
+			log.Errorf("[loadFilePrefixesOnStartup] setFilePrefix error : %s", err)
 			return err
 		}
 	}
@@ -495,22 +535,26 @@ func (this *MaxService) IsFileStore() bool {
 
 func (this *MaxService) PutBlockForFilestore(fileName string, block blocks.Block, offset uint64) error {
 	if !this.IsFileStore() {
+		log.Errorf("[PutBlockForFilestore] not a filestore")
 		return errors.New("PutBlockForFilestore can be only called on filestore")
 	}
 
 	absFileName, err := filepath.Abs(fileName)
 	if err != nil {
+		log.Errorf("[PutBlockForFilestore] get abs path error for %s, error : %s", fileName, err)
 		return err
 	}
 
 	node, err := merkledag.DecodeProtobufBlock(block)
 	if err == nil {
 		if len(node.Links()) == 0 {
+			log.Errorf("[PutBlockForFilestore] ipld node with no link")
 			return errors.New("ipld node with no link")
 		}
 	} else {
 		node, err = merkledag.DecodeRawBlock(block)
 		if err != nil {
+			log.Errorf("[PutBlockForFilestore] DecodeRawBlock error : %s", err)
 			return err
 		}
 		node = &posinfo.FilestoreNode{
@@ -524,6 +568,7 @@ func (this *MaxService) PutBlockForFilestore(fileName string, block blocks.Block
 
 	err = this.blockstore.Put(node)
 	if err != nil {
+		log.Errorf("[PutBlockForFilestore] put to block store error : %s", err)
 		return err
 	}
 
@@ -540,6 +585,7 @@ func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []b
 	attr := fsstore.NewBlockAttr(blockHash, fileHash, index, tag)
 	err := this.fsstore.PutBlockAttr(attrKey, attr)
 	if err != nil {
+		log.Errorf("[PutTag] error putting tag : %s", err)
 		return fmt.Errorf("error putting tag :%t", err)
 	}
 
@@ -550,6 +596,7 @@ func (this *MaxService) GetTag(blockHash, fileHash string, index uint64) ([]byte
 	attrKey := fileHash + blockHash + strconv.FormatUint(index, 10)
 	attr, err := this.fsstore.GetBlockAttr(attrKey)
 	if err != nil {
+		log.Errorf("[GetTag] error getting tag ：%s", err)
 		return nil, err
 	}
 
@@ -561,6 +608,7 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 
 	blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash + blockHash)
 	if err != nil {
+		log.Errorf("[getTagIndexes] GetBlockAttrsWithPrefix error : %s", err)
 		return nil, err
 	}
 
@@ -575,12 +623,14 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 func (this *MaxService) DeleteFile(fileHash string) error {
 	blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
 	if err != nil {
+		log.Errorf("[DeleteFile] GetBlockAttrsWithPrefix error : %s", err)
 		return err
 	} else {
 		for _, attr := range blockAttrs {
 			key := attr.FileHash + attr.Hash + strconv.FormatUint(attr.Index, 10)
 			err = this.fsstore.DeleteBlockAttr(key)
 			if err != nil {
+				log.Errorf("[DeleteFile] DeleteBlockAttr error : %s", err)
 				return err
 			}
 		}
@@ -594,11 +644,13 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 
 func (this *MaxService) deleteFile(fileHash string) error {
 	if this.IsFileStore() {
+		log.Errorf("[deleteFile] not applicable for filestore")
 		return errors.New("deleteFile not applicable for fileStore")
 	}
 
 	rootCid, err := cid.Decode(fileHash)
 	if err != nil {
+		log.Errorf("[deleteFile] decode %s error : %s", fileHash, err)
 		return err
 	}
 
@@ -607,6 +659,7 @@ func (this *MaxService) deleteFile(fileHash string) error {
 
 	gcNow, err := this.checkIfNeedGCNow()
 	if err != nil {
+		log.Errorf("[deleteFile] checkIfNeedGCNow error : %s", err)
 		return err
 	}
 
@@ -616,6 +669,7 @@ func (this *MaxService) deleteFile(fileHash string) error {
 		// wait GC finish
 		for result := range resultChan {
 			if result.Error != nil {
+				log.Errorf("[deleteFile] gc result error : %s", result.Error)
 				return result.Error
 			}
 
@@ -631,11 +685,13 @@ func (this *MaxService) deleteFile(fileHash string) error {
 func (this *MaxService) checkIfNeedGCNow() (bool, error) {
 	config, err := this.repo.Config()
 	if err != nil {
+		log.Errorf("[checkIfNeedGCNow] get repo config error : %s", err)
 		return false, err
 	}
 
 	period, err := time.ParseDuration(config.Datastore.GCPeriod)
 	if err != nil {
+		log.Errorf("[checkIfNeedGCNow] ParseDuration error : %s", err)
 		return false, err
 	}
 
@@ -649,16 +705,19 @@ func (this *MaxService) checkIfNeedGCNow() (bool, error) {
 // add an external file to fs, not using the filestore
 func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
 	if this.IsFileStore() {
+		log.Errorf("[AddFileToFS] not applicable to filestore")
 		return nil, nil, errors.New("AddFileToFS not applicable to filestore")
 	}
 
 	fileName, err := filepath.Abs(fileName)
 	if err != nil {
+		log.Errorf("[AddFileToFS] get abs path error for %s, err : %s", fileName, err)
 		return nil, nil, err
 	}
 
 	root, nodes, err := this.NodesFromFile(fileName, filePrefix, encrypt, password)
 	if err != nil {
+		log.Errorf("[AddFileToFS] NodesFromFile error : %s", err)
 		return nil, nil, err
 	}
 
@@ -669,12 +728,14 @@ func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, p
 
 		err = this.blockstore.Put(dagNode)
 		if err != nil {
+			log.Errorf("[AddFileToFS] put block to block store error : %s", err)
 			return nil, nil, err
 		}
 	}
 
 	err = this.PinRoot(context.TODO(), root.Cid())
 	if err != nil {
+		log.Errorf("[AddFileToFS] pinroot  error : %s", err)
 		return nil, nil, err
 	}
 
@@ -688,10 +749,12 @@ func (this *MaxService) gc() <-chan gc.Result {
 
 func (this *MaxService) PinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	if this.IsFileStore() {
+		log.Errorf("[PinRoot] not applicable to filestore")
 		return errors.New("pinroot not applicable to filestore")
 	}
 
 	if this.pinner == nil {
+		log.Errorf("[PinRoot] pinner is nil")
 		return errors.New("cannot pin because pinner is nil")
 	}
 
@@ -702,6 +765,7 @@ func (this *MaxService) PinRoot(ctx context.Context, rootCid *cid.Cid) error {
 
 func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	if this.pinner == nil {
+		log.Errorf("[unpinRoot] pinner is nil")
 		return errors.New("cannot pin because pinner is nil")
 	}
 
@@ -714,6 +778,7 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 
 	dagNode, err := this.checkRootForGetCid(rootCid)
 	if err != nil {
+		log.Errorf("[GetFileAllCids] checkRootForGetCid error : %s", err)
 		return nil, err
 	}
 
@@ -729,6 +794,7 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 
 	err = this.traverseMerkelDag(dagNode, getCid)
 	if err != nil {
+		log.Errorf("[GetFileAllCids] traverseMerkelDag error : %s", err)
 		return nil, err
 	}
 
@@ -744,6 +810,7 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 
 	dagNode, err := this.checkRootForGetCid(rootCid)
 	if err != nil {
+		log.Errorf("[GetFileAllCidsWithOffset] checkRootForGetCid error : %s", err)
 		return nil, nil, err
 	}
 
@@ -765,6 +832,7 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 
 	err = this.traverseMerkelDag(dagNode, getCid)
 	if err != nil {
+		log.Errorf("[GetFileAllCidsWithOffset] traverseMerkelDag error : %s", err)
 		return nil, nil, err
 	}
 
@@ -773,6 +841,7 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 
 func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func) error {
 	if this.IsFileStore() {
+		log.Errorf("[traverseMerkelDag] not applicable for filestore")
 		return errors.New("cannot traverse offset with filestore")
 	}
 
@@ -788,11 +857,13 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 
 func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) {
 	if this.IsFileStore() {
+		log.Errorf("[checkRootForGetCid] not applicable for filestore")
 		return nil, errors.New("cannot get cids with filestore")
 	}
 
 	blk, err := this.GetBlock(rootCid)
 	if err != nil {
+		log.Errorf("[checkRootForGetCid] GetBlock error : %s", err)
 		return nil, err
 	}
 
@@ -800,9 +871,11 @@ func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) 
 	if err != nil {
 		// for a small file with one node, the root is rawnode
 		if _, err = merkledag.DecodeRawBlock(blk); err == nil {
+			log.Errorf("[checkRootForGetCid] DecodeRawBlock ok")
 			return nil, nil
 		}
 
+		log.Errorf("[checkRootForGetCid] DecodeProtobufBlock error : %s", err)
 		return nil, errors.New("error decoding root for get cid")
 	}
 
@@ -814,19 +887,23 @@ func (this *MaxService) WriteFileFromDAG(rootCid *cid.Cid, outPath string) error
 	var dagNode ipld.Node
 
 	if this.IsFileStore() {
+		log.Errorf("[WriteFileFromDAG] not applicable for filesotre")
 		return errors.New("cannot write file from dag with filestore")
 	}
 
 	blk, err := this.GetBlock(rootCid)
 	if err != nil {
+		log.Errorf("[WriteFileFromDAG] GetBlock error : %s", err)
 		return err
 	}
 
 	dagNode, err = merkledag.DecodeProtobufBlock(blk)
 	if err != nil {
 		if dagNode, err = merkledag.DecodeRawBlock(blk); err != nil {
+			log.Debugf("[WriteFileFromDAG] DecodeRawBlock error : %s", err)
 			return err
 		}
+		log.Errorf("[WriteFileFromDAG] DecodeProtobufBlock error : %s", err)
 	}
 
 	reader, err := archive.DagArchive(context.TODO(), dagNode, "", this.dag, false, 0)
@@ -838,6 +915,7 @@ func (this *MaxService) WriteFileFromDAG(rootCid *cid.Cid, outPath string) error
 func (this *MaxService) Close() error {
 	err := this.repo.Close()
 	if err != nil {
+		log.Errorf("[Close] repo close error : %s", err)
 		return err
 	}
 	this.StopFileProve()
@@ -851,22 +929,26 @@ func (this *MaxService) StopFileProve() {
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
 
 	if _, ok := blockstore.(bstore.GCBlockstore); !ok {
+		log.Errorf("[startPeriodicGC] wrong blockstore type, cannot run GC")
 		return errors.New("wrong blockstore type, cannot run GC")
 	}
 
 	if gcPeriod != "" {
 		_, err := time.ParseDuration(gcPeriod)
 		if err != nil {
+			log.Errorf("[startPeriodicGC] ParseDuration %s error : %s", gcPeriod, err)
 			return fmt.Errorf("error in parse gc period : %s", err)
 		}
 
 		err = repo.SetConfigKey("Datastore.GCPeriod", gcPeriod)
 		if err != nil {
+			log.Errorf("[startPeriodicGC] set gc period error : %s", err)
 			return err
 		}
 
 		config, err := repo.Config()
 		if err != nil {
+			log.Errorf("[startPeriodicGC] get repo config error : %s", err)
 			return err
 		}
 		config.Datastore.GCPeriod = gcPeriod
@@ -882,7 +964,7 @@ func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinne
 	go func() {
 		err := corerepo.PeriodicGC(ctx, node)
 		if err != nil {
-			log.Error(err)
+			log.Error("[startPeriodicGC] PeriodicGC error : %s", err)
 		}
 	}()
 

@@ -6,13 +6,13 @@ import (
 	ds "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
 	query "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/query"
 
-	logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
+	//logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
 
 	"github.com/saveio/max/max/dbstore"
 	"github.com/saveio/themis/common"
 )
 
-var log = logging.Logger("fsstore")
+//var log = logging.Logger("fsstore")
 
 const (
 	BLOCK_ATTR_PREFIX      = "blockattr:"
