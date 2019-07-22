@@ -238,6 +238,11 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
 			break
 		case EXPIRE_AFTER_MAX:
+			err = this.DeleteFile(fileHash)
+			if err != nil {
+				log.Errorf("[proveFile] DeleteFile for fileHash %s after prove task expire error : %s", fileHash, err)
+				return err
+			}
 			err = this.deleteProveTask(fileHash)
 			if err != nil {
 				log.Errorf("[proveFile] deleteProveTask for fileHash %s after prove task expire error : %s", fileHash, err)
