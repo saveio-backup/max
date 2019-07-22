@@ -264,6 +264,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		}
 	}
 
+	log.Debugf("[NewMaxService] new max service success")
 	return service, nil
 }
 
@@ -336,6 +337,8 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 			validList = append(validList, item)
 		}
 	}
+
+	log.Debugf("[NodesFromFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
 	return root, validList, nil
 }
 
@@ -344,6 +347,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 	hashFunStr := "sha2-256"
 	file, err := os.Open(fileName)
 	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: open file %s error : %s", fileName, err)
 		return nil, nil, err
 	}
 	defer file.Close()
@@ -397,6 +401,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 		return root, list, err
 	}
 
+	log.Debugf("[GetAllNodesFromFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
 	return root, list, nil
 }
 
@@ -443,15 +448,26 @@ func (this *MaxService) buildFileStoreForFile(fileName, filePrefix string, root 
 		}
 	}
 
+	log.Debugf("[buildFileStoreForFile] success for fileName : %s, filePrefix : %s", fileName, filePrefix)
 	return cids, offsets, nil
 }
 
 func (this *MaxService) PutBlock(block blocks.Block) error {
-	return this.blockstore.Put(block)
+	err := this.blockstore.Put(block)
+	if err != nil {
+		log.Errorf("[PutBlock] put error : %s", err)
+		return err
+	}
+	return nil
 }
 
 func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
-	return this.blockstore.Get(cid)
+	block, err := this.blockstore.Get(cid)
+	if err != nil {
+		log.Errorf("[GetBlock] get error : %s", err)
+		return nil, err
+	}
+	return block, nil
 }
 
 func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error {
@@ -461,6 +477,7 @@ func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error 
 	}
 
 	this.filemanager.SetPrefix(fileName, filePrefix)
+	log.Debugf("[setFilePrefix] fileName : %s, filePrefix : %s", fileName, filePrefix)
 	return nil
 }
 
@@ -471,7 +488,13 @@ func (this *MaxService) SetFilePrefix(fileName string, filePrefix string) error 
 		return err
 	}
 
-	return this.saveFilePrefix(fileName, filePrefix)
+	err = this.saveFilePrefix(fileName, filePrefix)
+	if err != nil {
+		log.Errorf("[SetFilePrefix] saveFilePrefix error: %s", err)
+		return err
+	}
+
+	return nil
 }
 
 func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error {
@@ -482,7 +505,12 @@ func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error
 
 	prefix := fsstore.NewFilePrefix(fileName, filePrefix)
 
-	return this.fsstore.PutFilePrefix(fileName, prefix)
+	err := this.fsstore.PutFilePrefix(fileName, prefix)
+	if err != nil {
+		log.Errorf("[saveFilePrefix] PutFilePrefix error : %s", err)
+	}
+
+	return nil
 }
 
 func (this *MaxService) getFilePrefixes() (map[string]string, error) {
@@ -508,6 +536,7 @@ func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 		pathToPrefix[prefix.Path] = prefix.Prefix
 	}
 
+	log.Debugf("[getFilePrefixes] pathToPrefix : %v", pathToPrefix)
 	return pathToPrefix, nil
 }
 
@@ -526,6 +555,7 @@ func (this *MaxService) loadFilePrefixesOnStartup() error {
 		}
 	}
 
+	log.Debugf("[loadFilePrefixesOnStartup] success")
 	return nil
 }
 
@@ -576,7 +606,12 @@ func (this *MaxService) PutBlockForFilestore(fileName string, block blocks.Block
 }
 
 func (this *MaxService) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
-	return this.blockstore.AllKeysChan(ctx)
+	ch, err :=this.blockstore.AllKeysChan(ctx)
+	if err != nil {
+		log.Errorf("[AllKeysChan] get all keys chan error : %s", err)
+		return nil, err
+	}
+	return ch, nil
 }
 
 func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []byte) error {
@@ -589,6 +624,7 @@ func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []b
 		return fmt.Errorf("error putting tag :%t", err)
 	}
 
+	log.Debugf("[PutTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash,blockHash, index)
 	return nil
 }
 
@@ -600,6 +636,7 @@ func (this *MaxService) GetTag(blockHash, fileHash string, index uint64) ([]byte
 		return nil, err
 	}
 
+	log.Debugf("[GetTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash,blockHash, index)
 	return attr.Tag, nil
 }
 
@@ -616,6 +653,7 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 		indexes = append(indexes, attr.Index)
 	}
 
+	log.Debugf("[getTagIndexes] succuess for fileHash : %s, blockHash : %s", fileHash, blockHash)
 	return indexes, nil
 }
 
@@ -638,6 +676,7 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 
 	// remove the file from provetasks
 	this.provetasks.Delete(fileHash)
+	log.Debugf("[DeleteFile] delete from prove tasks, fileHash : %s", fileHash)
 
 	return this.deleteFile(fileHash)
 }
@@ -674,9 +713,12 @@ func (this *MaxService) deleteFile(fileHash string) error {
 			}
 
 			if result.KeyRemoved != nil {
-				log.Debugf("key %s removed by GC\n", result.KeyRemoved.String())
+				log.Debugf("[deleteFile] key %s removed by GC", result.KeyRemoved.String())
 			}
 		}
+		log.Debugf("[deleteFile] GC finish")
+	}else{
+		log.Debugf("[deleteFile] dont delete file now, let periodic GC do the job")
 	}
 
 	return nil
@@ -694,6 +736,8 @@ func (this *MaxService) checkIfNeedGCNow() (bool, error) {
 		log.Errorf("[checkIfNeedGCNow] ParseDuration error : %s", err)
 		return false, err
 	}
+
+	log.Debugf("[checkIfNeedGCNow] GC period : %d", period)
 
 	// when gc period is 0, not periodic gc but immediate gc
 	if int64(period) == 0 {
@@ -739,6 +783,7 @@ func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, p
 		return nil, nil, err
 	}
 
+	log.Debugf("[AddFileToFS] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
 	return root, nodes, nil
 }
 
@@ -759,8 +804,11 @@ func (this *MaxService) PinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	}
 
 	this.pinner.PinWithMode(rootCid, pin.Recursive)
-	return this.pinner.Flush()
-
+	err :=this.pinner.Flush()
+	if err != nil {
+		log.Errorf("[PinRoot] flush error : %s", err)
+	}
+	return nil
 }
 
 func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
@@ -770,7 +818,11 @@ func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	}
 
 	this.pinner.Unpin(ctx, rootCid, true)
-	return this.pinner.Flush()
+	err :=this.pinner.Flush()
+	if err != nil {
+		log.Errorf("[unpinRoot] flush error : %s", err)
+	}
+	return nil
 }
 
 func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([]*cid.Cid, error) {
@@ -798,6 +850,7 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 		return nil, err
 	}
 
+	log.Debugf("[GetFileAllCids] success for cid: %s", rootCid.String())
 	return cids, nil
 }
 
@@ -836,6 +889,7 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 		return nil, nil, err
 	}
 
+	log.Debugf("[GetFileAllCidsWithOffset] success for cid: %s", rootCid.String())
 	return cids, offsets, nil
 }
 
@@ -852,7 +906,11 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 		SkipDuplicates: true,
 	}
 
-	return traverse.Traverse(node, options)
+	err :=traverse.Traverse(node, options)
+	if err != nil {
+		log.Debugf("[traverseMerkelDag] traverse error : %s", err)
+	}
+	return nil
 }
 
 func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) {
@@ -871,7 +929,7 @@ func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) 
 	if err != nil {
 		// for a small file with one node, the root is rawnode
 		if _, err = merkledag.DecodeRawBlock(blk); err == nil {
-			log.Errorf("[checkRootForGetCid] DecodeRawBlock ok")
+			log.Debugf("[checkRootForGetCid] DecodeRawBlock ok")
 			return nil, nil
 		}
 
@@ -879,6 +937,7 @@ func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) 
 		return nil, errors.New("error decoding root for get cid")
 	}
 
+	log.Debugf("[checkRootForGetCid] success for cid : %s", rootCid.String())
 	return dagNode, nil
 }
 
@@ -909,7 +968,11 @@ func (this *MaxService) WriteFileFromDAG(rootCid *cid.Cid, outPath string) error
 	reader, err := archive.DagArchive(context.TODO(), dagNode, "", this.dag, false, 0)
 	extractor := tar.Extractor{Path: outPath}
 
-	return extractor.Extract(reader)
+	err = extractor.Extract(reader)
+	if err != nil{
+		log.Errorf("[WriteFileFromDAG] extract error : %s", err)
+	}
+	return nil
 }
 
 func (this *MaxService) Close() error {
@@ -919,11 +982,13 @@ func (this *MaxService) Close() error {
 		return err
 	}
 	this.StopFileProve()
+	log.Debugf("[Close] success")
 	return nil
 }
 
 func (this *MaxService) StopFileProve() {
 	close(this.killprove)
+	log.Debugf("[StopFileProve] stop prove task")
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
@@ -952,6 +1017,7 @@ func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinne
 			return err
 		}
 		config.Datastore.GCPeriod = gcPeriod
+		log.Debugf("[startPeriodicGC] peirod : %d", gcPeriod)
 	}
 
 	//build the fake "node" in order to use GC interface

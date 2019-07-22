@@ -19,6 +19,9 @@ import (
 
 // start the PDP prove service, if it is called first time for a file, it should submit one immediately
 func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
+	log.Debugf("[StartPDPVerify] fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
+		fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+
 	if this.IsFileStore() {
 		log.Errorf("[StartPDPVerify] cannot start pdp verify with filestore")
 		return errors.New("cannot start pdp verify with filestore")
@@ -61,20 +64,21 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 	fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	if err != nil {
 		// not found prove for the first time
-		log.Errorf("[StartPDPVerify] first prove for filehash: %s", fileHash)
+		log.Debugf("[StartPDPVerify] first prove for filehash: %s, GetFileProveDetails error : %s", fileHash, err)
 		go this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
 	} else {
 		var found bool
 		for _, detail := range fileProveDetails.ProveDetails {
 			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
 				found = true
+				log.Debugf("[StartPDPVerify] prove detail found with matching address for filehash: %s", fileHash)
 				break
 			}
 		}
 
 		// first prove, when prove detail found but not provetask, it means the fs node has restarted
 		if !found {
-			log.Errorf("[StartPDPVerify] first prove when prove detail found for filehash: %s", fileHash)
+			log.Debugf("[StartPDPVerify] first prove when prove detail found for filehash: %s", fileHash)
 			go this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
 		}
 	}
@@ -83,18 +87,35 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 }
 
 func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
-	return this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr))
+	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr))
+	if err != nil {
+		log.Errorf("[saveProveTask] PutProveParam error: %v, for fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
+			err, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+		return err
+	}
+	return nil
 }
 
 func (this *MaxService) getProveTasks() ([]*fsstore.ProveParam, error) {
-	return this.fsstore.GetProveParams()
+	params, err := this.fsstore.GetProveParams()
+	if err != nil {
+		log.Errorf("[getProveTasks] error : %s", err)
+		return nil, err
+	}
+	return params, nil
 }
 
 func (this *MaxService) deleteProveTask(fileHash string) error {
-	return this.fsstore.DeleteProveParam(fileHash)
+	err := this.fsstore.DeleteProveParam(fileHash)
+	if err != nil {
+		log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
+		return err
+	}
+	return nil
 }
 
 func (this *MaxService) loadPDPTasksOnStartup() error {
+	log.Debugf("[loadPDPTasksOnStartup] start")
 	this.loadingtasks = true
 
 	tasks, err := this.getProveTasks()
@@ -112,14 +133,17 @@ func (this *MaxService) loadPDPTasksOnStartup() error {
 	}
 
 	this.loadingtasks = false
+	log.Debugf("[loadPDPTasksOnStartup] finish")
 	return nil
 }
 
 func (this *MaxService) proveFileService() {
+	log.Debugf("[proveFileService] start service")
 	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	for {
 		select {
 		case <-this.killprove:
+			log.Debugf("[proveFileService] service killed")
 			return
 		case <-ticker.C:
 			if this.chain == nil {
@@ -176,6 +200,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	if !first {
 		var times uint64
 
+		log.Debugf("[proveFile] not first prove for fileHash %s", fileHash)
 		fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
 		if err != nil {
 			log.Errorf("[proveFile] GetFileProveDetails for fileHash %s error : %s", fileHash, err)
@@ -185,10 +210,12 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		for _, detail := range fileProveDetails.ProveDetails {
 			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
 				times = detail.ProveTimes
+				log.Debugf("[proveFile] find matching prove details for fileHash : %s, times :%d", fileHash, times)
 				break
 			}
 		}
 
+		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ChallengeTimes)
 		if times == fileInfo.ChallengeTimes+1 {
 			err = this.DeleteFile(fileHash)
 			if err != nil {
@@ -200,12 +227,32 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				log.Errorf("[proveFile] deleteProveTask for fileHash %s error : %s", fileHash, err)
 				return err
 			}
+
+			log.Debugf("[proveFile] finish file prove for %s", fileHash)
 			return nil
 		}
 
-		left := fileInfo.BlockHeight + times*fileInfo.ChallengeRate
-		if uint64(height) < left {
+		expireState := checkProveExpire(uint64(height), fileInfo.BlockHeight, times, fileInfo.ChallengeRate)
+		switch expireState {
+		case EXPIRE_NEED_PROVE:
+			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
+			break
+		case EXPIRE_AFTER_MAX:
+			err = this.deleteProveTask(fileHash)
+			if err != nil {
+				log.Errorf("[proveFile] deleteProveTask for fileHash %s after prove task expire error : %s", fileHash, err)
+				return err
+			}
+
+			log.Warnf("[proveFile] delete file prove task for fileHash %s after prove task expire", fileHash)
 			return nil
+
+		case EXPIRE_BEFORE_MIN:
+			log.Debugf("[proveFile] file prove too early for file %s", fileHash)
+			return nil
+		default:
+			log.Errorf("[proveFile] invalid expire state")
+			return fmt.Errorf("invalid expire state")
 		}
 	}
 
@@ -222,6 +269,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			log.Errorf("[proveFile] saveProveTask for fileHash %s error : %s", fileHash, err)
 			return err
 		}
+		log.Debugf("[proveFile] save prove task with updated parameter for backup node after first prove")
 	}
 	return nil
 }
@@ -345,5 +393,29 @@ func (this *MaxService) waitOneConfirmation(curBlockHeight uint64) error {
 		}
 		retry++
 		time.Sleep(time.Duration(MAX_REQUEST_TIMEWAIT) * time.Second)
+	}
+}
+
+type ExpireState int
+
+const (
+	EXPIRE_NODE       = iota
+	EXPIRE_BEFORE_MIN // before min time to submit the prove
+	EXPIRE_AFTER_MAX  // after max time to submit the prove
+	EXPIRE_NEED_PROVE // need to submit the prove
+)
+
+func checkProveExpire(currBlockHeight uint64, fileBlockHeight uint64, provedTimes uint64, challengeRate uint64) ExpireState {
+	expireMinHeight := fileBlockHeight + provedTimes*challengeRate
+	expireMaxHeight := fileBlockHeight + (provedTimes+1)*challengeRate
+
+	log.Debugf("[checkProveExpire] currBlockHeight :%d, fileBlockHeight :%d, provedTimes :%d, challengeRate :%d",
+		currBlockHeight, fileBlockHeight, provedTimes, challengeRate)
+	if currBlockHeight > expireMaxHeight {
+		return EXPIRE_AFTER_MAX
+	} else if currBlockHeight < expireMinHeight {
+		return EXPIRE_BEFORE_MIN
+	} else {
+		return EXPIRE_NEED_PROVE
 	}
 }
