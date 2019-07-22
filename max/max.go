@@ -68,7 +68,15 @@ const (
 	MAX_REQUEST_TIMEWAIT    = 10 // request time wait in second
 	PROVE_FILE_INTERVAL     = 10 // 10s proves
 	MAX_PROVE_FILE_ROUTINES = 10 // maximum of concurrent check prove files
+	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE = 10 // default remove notify channel size
+	PROVE_TASK_REMOVAL_REASON_NORMAL = "success"
+	PROVE_TASK_REMOVAL_REASON_EXPIRE = "expire"
 )
+
+type ProveTaskRemovalNotify struct{
+	FileHash string
+	Reason string
+}
 
 type MaxService struct {
 	blockstore   bstore.Blockstore // blockstore could be either real blockstore or filestore
@@ -84,6 +92,7 @@ type MaxService struct {
 	chain        *sdk.Chain
 	config       *FSConfig
 	killprove    chan struct{}
+	Notify chan *ProveTaskRemovalNotify
 }
 
 type FSConfig struct {
@@ -242,6 +251,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			GcPeriod:  config.GcPeriod,
 		},
 		killprove: make(chan struct{}),
+		Notify: make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
 	}
 
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
@@ -675,9 +685,11 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 	}
 
 	// remove the file from provetasks
-	this.provetasks.Delete(fileHash)
-	log.Debugf("[DeleteFile] delete from prove tasks, fileHash : %s", fileHash)
-
+	err = this.deleteProveTask(fileHash)
+	if err != nil {
+		log.Errorf("[DeleteFile] delete prove task error: %s", err)
+	}
+	log.Debugf("[DeleteFile] delete prove task for fileHash : %s", fileHash)
 	return this.deleteFile(fileHash)
 }
 

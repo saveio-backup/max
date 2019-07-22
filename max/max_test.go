@@ -1681,6 +1681,11 @@ func TestDeleteProveTask(t *testing.T) {
 				t.Fatal("failed to delete prove task")
 			}
 		}
+
+		_, exist := max.provetasks.Load(param.FileHash)
+		if exist {
+			t.Fatal("file hash not deleted from prove tasks")
+		}
 	}
 }
 

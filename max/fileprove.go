@@ -105,12 +105,27 @@ func (this *MaxService) getProveTasks() ([]*fsstore.ProveParam, error) {
 	return params, nil
 }
 
+func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string){
+	notify := &ProveTaskRemovalNotify{
+		FileHash: fileHash,
+		Reason: reason,
+	}
+
+	go func(){
+		log.Debugf("[notifyProveTaskDeletion] notify remove prove task for fileHash : %s, reason : %s", fileHash, reason)
+		this.Notify <- notify
+	}()
+}
+
 func (this *MaxService) deleteProveTask(fileHash string) error {
+	this.provetasks.Delete(fileHash)
+
 	err := this.fsstore.DeleteProveParam(fileHash)
 	if err != nil {
 		log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -222,13 +237,8 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				log.Errorf("[proveFile] DeleteFile for fileHash %s error : %s", fileHash, err)
 				return err
 			}
-			err = this.deleteProveTask(fileHash)
-			if err != nil {
-				log.Errorf("[proveFile] deleteProveTask for fileHash %s error : %s", fileHash, err)
-				return err
-			}
-
 			log.Debugf("[proveFile] finish file prove for %s", fileHash)
+			this.notifyProveTaskDeletion(fileHash,PROVE_TASK_REMOVAL_REASON_NORMAL)
 			return nil
 		}
 
@@ -243,13 +253,8 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				log.Errorf("[proveFile] DeleteFile for fileHash %s after prove task expire error : %s", fileHash, err)
 				return err
 			}
-			err = this.deleteProveTask(fileHash)
-			if err != nil {
-				log.Errorf("[proveFile] deleteProveTask for fileHash %s after prove task expire error : %s", fileHash, err)
-				return err
-			}
-
-			log.Warnf("[proveFile] delete file prove task for fileHash %s after prove task expire", fileHash)
+			log.Warnf("[proveFile] delete file and prove task for fileHash %s after prove task expire", fileHash)
+			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
 			return nil
 
 		case EXPIRE_BEFORE_MIN:
