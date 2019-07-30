@@ -285,75 +285,85 @@ func isTooManyFDError(err error) bool {
 	return false
 }
 
-func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
-	fileName, err := filepath.Abs(fileName)
+func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (blockHashes []string, err error) {
+	absFileName, err := filepath.Abs(fileName)
 	if err != nil {
 		log.Errorf("[NodesFromFile] get abs path error for %s, err: %s", fileName, err)
-		return nil, nil, err
+		return nil, err
 	}
 
-	root, list, err := this.GetAllNodesFromFile(fileName, filePrefix, encrypt, password)
+	root, list, err := this.GetAllNodesFromFile(absFileName, filePrefix, encrypt, password)
 	if err != nil {
 		log.Errorf("[NodesFromFile] GetAllNodesFromFile error : %s", err)
-		return root, list, err
+		return nil, err
 	}
 
-	if this.IsFileStore() {
-		if !encrypt {
-			_, _, err = this.buildFileStoreForFile(fileName, filePrefix, root, list)
-			if err != nil {
-				log.Errorf("[NodesFromFile] buildFileStoreForFile error : %s", err)
-				return nil, nil, err
-			}
-		} else {
-			// when encryption is used, cannot only use filestore since we need somewhere to store the
-			// encrypted file, the file is not pinned becasue it will be useless when upload file finish
-			err = this.blockstore.Put(root)
-			if err != nil {
-				log.Errorf("[NodesFromFile] put root to block store error : %s", err)
-				return nil, nil, err
-			}
-
-			for _, node := range list {
-				dagNode, err := node.GetDagNode()
-				if err != nil {
-					log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
-					return nil, nil, err
-				}
-
-				err = this.blockstore.Put(dagNode)
-				if err != nil {
-					log.Errorf("[NodesFromFile] put dagNode to block store error : %s", err)
-					return nil, nil, err
-				}
-			}
-		}
-	}
-
-	keys := make(map[string]struct{}, 0)
-	keys[root.Cid().String()] = struct{}{}
-
-	validList := make([]*helpers.UnixfsNode, 0)
-	for _, item := range list {
-		lNode, err := item.GetDagNode()
+	if this.IsFileStore() && !encrypt {
+		_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, root, list)
 		if err != nil {
-			log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
-			return nil, nil, errors.New("item getdagnode failed")
+			log.Errorf("[NodesFromFile] buildFileStoreForFile error : %s", err)
+			return nil, err
 		}
-		key := lNode.Cid().String()
-		if _, ok := keys[key]; !ok {
-			validList = append(validList, item)
+	} else {
+		// when encryption is used, cannot only use filestore since we need somewhere to store the
+		// encrypted file, the file is not pinned becasue it will be useless when upload file finish
+		err = this.blockstore.Put(root)
+		if err != nil {
+			log.Errorf("[NodesFromFile] put root to block store error : %s", err)
+			return nil, err
 		}
+
+		for _, node := range list {
+			dagNode, err := node.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
+				return nil, err
+			}
+
+			err = this.blockstore.Put(dagNode)
+			if err != nil {
+				log.Errorf("[NodesFromFile] put dagNode to block store error : %s", err)
+				return nil, err
+			}
+		}
+	}
+
+	/*
+		keys := make(map[string]struct{}, 0)
+		keys[root.Cid().String()] = struct{}{}
+
+		validList := make([]*helpers.UnixfsNode, 0)
+		for _, item := range list {
+			lNode, err := item.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromFile] GetDagNode error : %s", err)
+				return nil, errors.New("item getdagnode failed")
+			}
+			key := lNode.Cid().String()
+			if _, ok := keys[key]; !ok {
+				validList = append(validList, item)
+			}
+		}
+	*/
+
+	cids, err := this.GetFileAllCids(context.TODO(), root.Cid())
+	if err != nil {
+		log.Errorf("[]NodesFromFile getFileAllCids error : %s", err)
+		return nil, err
+	}
+
+	for _, cid := range cids {
+		blockHashes = append(blockHashes, cid.String())
 	}
 
 	err = this.PinRoot(context.TODO(), root.Cid())
 	if err != nil {
 		log.Errorf("[NodesFromFile] pinroot  error : %s", err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	log.Debugf("[NodesFromFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
-	return root, validList, nil
+	return blockHashes, nil
 }
 
 func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
@@ -487,7 +497,7 @@ func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
 func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error {
 	if !this.IsFileStore() {
 		log.Errorf("[setFilePrefix] not a filestore")
-		return errors.New("PutBlockForFilestore can be only called on filestore")
+		return errors.New("setFilePrefix can be only called on filestore")
 	}
 
 	this.filemanager.SetPrefix(fileName, filePrefix)
@@ -777,7 +787,7 @@ func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, p
 		return nil, nil, err
 	}
 
-	root, nodes, err := this.NodesFromFile(fileName, filePrefix, encrypt, password)
+	root, nodes, err := this.GetAllNodesFromFile(fileName, filePrefix, encrypt, password)
 	if err != nil {
 		log.Errorf("[AddFileToFS] NodesFromFile error : %s", err)
 		return nil, nil, err
@@ -907,14 +917,9 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 }
 
 func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func) error {
-	if this.IsFileStore() {
-		log.Errorf("[traverseMerkelDag] not applicable for filestore")
-		return errors.New("cannot traverse offset with filestore")
-	}
-
 	options := traverse.Options{
 		DAG:            this.dag,
-		Order:          traverse.DFSPre,
+		Order:          traverse.BFS,
 		Func:           travFunc,
 		SkipDuplicates: true,
 	}
@@ -927,11 +932,6 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 }
 
 func (this *MaxService) checkRootForGetCid(rootCid *cid.Cid) (ipld.Node, error) {
-	if this.IsFileStore() {
-		log.Errorf("[checkRootForGetCid] not applicable for filestore")
-		return nil, errors.New("cannot get cids with filestore")
-	}
-
 	blk, err := this.GetBlock(rootCid)
 	if err != nil {
 		log.Errorf("[checkRootForGetCid] GetBlock error : %s", err)
@@ -1006,7 +1006,6 @@ func (this *MaxService) StopFileProve() {
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
-
 	if _, ok := blockstore.(bstore.GCBlockstore); !ok {
 		log.Errorf("[startPeriodicGC] wrong blockstore type, cannot run GC")
 		return errors.New("wrong blockstore type, cannot run GC")
