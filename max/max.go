@@ -64,18 +64,18 @@ const (
 )
 
 const (
-	MAX_RETRY_REQUEST_TIMES = 6  // max request retry times
-	MAX_REQUEST_TIMEWAIT    = 10 // request time wait in second
-	PROVE_FILE_INTERVAL     = 10 // 10s proves
-	MAX_PROVE_FILE_ROUTINES = 10 // maximum of concurrent check prove files
+	MAX_RETRY_REQUEST_TIMES            = 6  // max request retry times
+	MAX_REQUEST_TIMEWAIT               = 10 // request time wait in second
+	PROVE_FILE_INTERVAL                = 10 // 10s proves
+	MAX_PROVE_FILE_ROUTINES            = 10 // maximum of concurrent check prove files
 	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE = 10 // default remove notify channel size
-	PROVE_TASK_REMOVAL_REASON_NORMAL = "success"
-	PROVE_TASK_REMOVAL_REASON_EXPIRE = "expire"
+	PROVE_TASK_REMOVAL_REASON_NORMAL   = "success"
+	PROVE_TASK_REMOVAL_REASON_EXPIRE   = "expire"
 )
 
-type ProveTaskRemovalNotify struct{
+type ProveTaskRemovalNotify struct {
 	FileHash string
-	Reason string
+	Reason   string
 }
 
 type MaxService struct {
@@ -92,7 +92,7 @@ type MaxService struct {
 	chain        *sdk.Chain
 	config       *FSConfig
 	killprove    chan struct{}
-	Notify chan *ProveTaskRemovalNotify
+	Notify       chan *ProveTaskRemovalNotify
 }
 
 type FSConfig struct {
@@ -229,9 +229,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	offlineexch := offline.Exchange(blockstore)
 	bserv := blockservice.New(blockstore, offlineexch)
 	dag := merkledag.NewDAGService(bserv)
-	if config.FsType != FS_FILESTORE {
-		pinner = pin.NewPinner(rds, dag, dag)
-	}
+	pinner = pin.NewPinner(rds, dag, dag)
 
 	service := &MaxService{
 		blockstore:  blockstore,
@@ -251,7 +249,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			GcPeriod:  config.GcPeriod,
 		},
 		killprove: make(chan struct{}),
-		Notify: make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
+		Notify:    make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
 	}
 
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
@@ -346,6 +344,12 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 		if _, ok := keys[key]; !ok {
 			validList = append(validList, item)
 		}
+	}
+
+	err = this.PinRoot(context.TODO(), root.Cid())
+	if err != nil {
+		log.Errorf("[NodesFromFile] pinroot  error : %s", err)
+		return nil, nil, err
 	}
 
 	log.Debugf("[NodesFromFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
@@ -616,7 +620,7 @@ func (this *MaxService) PutBlockForFilestore(fileName string, block blocks.Block
 }
 
 func (this *MaxService) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error) {
-	ch, err :=this.blockstore.AllKeysChan(ctx)
+	ch, err := this.blockstore.AllKeysChan(ctx)
 	if err != nil {
 		log.Errorf("[AllKeysChan] get all keys chan error : %s", err)
 		return nil, err
@@ -634,7 +638,7 @@ func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []b
 		return fmt.Errorf("error putting tag :%t", err)
 	}
 
-	log.Debugf("[PutTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash,blockHash, index)
+	log.Debugf("[PutTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash, blockHash, index)
 	return nil
 }
 
@@ -646,7 +650,7 @@ func (this *MaxService) GetTag(blockHash, fileHash string, index uint64) ([]byte
 		return nil, err
 	}
 
-	log.Debugf("[GetTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash,blockHash, index)
+	log.Debugf("[GetTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash, blockHash, index)
 	return attr.Tag, nil
 }
 
@@ -669,36 +673,33 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 
 // delete file according to fileHash, only applicable for the FS node
 func (this *MaxService) DeleteFile(fileHash string) error {
-	blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
-	if err != nil {
-		log.Errorf("[DeleteFile] GetBlockAttrsWithPrefix error : %s", err)
-		return err
-	} else {
-		for _, attr := range blockAttrs {
-			key := attr.FileHash + attr.Hash + strconv.FormatUint(attr.Index, 10)
-			err = this.fsstore.DeleteBlockAttr(key)
-			if err != nil {
-				log.Errorf("[DeleteFile] DeleteBlockAttr error : %s", err)
-				return err
+	if !this.IsFileStore() {
+		blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
+		if err != nil {
+			log.Errorf("[DeleteFile] GetBlockAttrsWithPrefix error : %s", err)
+			return err
+		} else {
+			for _, attr := range blockAttrs {
+				key := attr.FileHash + attr.Hash + strconv.FormatUint(attr.Index, 10)
+				err = this.fsstore.DeleteBlockAttr(key)
+				if err != nil {
+					log.Errorf("[DeleteFile] DeleteBlockAttr error : %s", err)
+					return err
+				}
 			}
 		}
-	}
 
-	// remove the file from provetasks
-	err = this.deleteProveTask(fileHash)
-	if err != nil {
-		log.Errorf("[DeleteFile] delete prove task error: %s", err)
+		// remove the file from provetasks
+		err = this.deleteProveTask(fileHash)
+		if err != nil {
+			log.Errorf("[DeleteFile] delete prove task error: %s", err)
+		}
+		log.Debugf("[DeleteFile] delete prove task for fileHash : %s", fileHash)
 	}
-	log.Debugf("[DeleteFile] delete prove task for fileHash : %s", fileHash)
 	return this.deleteFile(fileHash)
 }
 
 func (this *MaxService) deleteFile(fileHash string) error {
-	if this.IsFileStore() {
-		log.Errorf("[deleteFile] not applicable for filestore")
-		return errors.New("deleteFile not applicable for fileStore")
-	}
-
 	rootCid, err := cid.Decode(fileHash)
 	if err != nil {
 		log.Errorf("[deleteFile] decode %s error : %s", fileHash, err)
@@ -729,7 +730,7 @@ func (this *MaxService) deleteFile(fileHash string) error {
 			}
 		}
 		log.Debugf("[deleteFile] GC finish")
-	}else{
+	} else {
 		log.Debugf("[deleteFile] dont delete file now, let periodic GC do the job")
 	}
 
@@ -737,6 +738,11 @@ func (this *MaxService) deleteFile(fileHash string) error {
 }
 
 func (this *MaxService) checkIfNeedGCNow() (bool, error) {
+	// filestore should use imeediate gc
+	if this.IsFileStore() {
+		return true, nil
+	}
+
 	config, err := this.repo.Config()
 	if err != nil {
 		log.Errorf("[checkIfNeedGCNow] get repo config error : %s", err)
@@ -805,18 +811,13 @@ func (this *MaxService) gc() <-chan gc.Result {
 }
 
 func (this *MaxService) PinRoot(ctx context.Context, rootCid *cid.Cid) error {
-	if this.IsFileStore() {
-		log.Errorf("[PinRoot] not applicable to filestore")
-		return errors.New("pinroot not applicable to filestore")
-	}
-
 	if this.pinner == nil {
 		log.Errorf("[PinRoot] pinner is nil")
 		return errors.New("cannot pin because pinner is nil")
 	}
 
 	this.pinner.PinWithMode(rootCid, pin.Recursive)
-	err :=this.pinner.Flush()
+	err := this.pinner.Flush()
 	if err != nil {
 		log.Errorf("[PinRoot] flush error : %s", err)
 	}
@@ -830,7 +831,7 @@ func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	}
 
 	this.pinner.Unpin(ctx, rootCid, true)
-	err :=this.pinner.Flush()
+	err := this.pinner.Flush()
 	if err != nil {
 		log.Errorf("[unpinRoot] flush error : %s", err)
 	}
@@ -918,7 +919,7 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 		SkipDuplicates: true,
 	}
 
-	err :=traverse.Traverse(node, options)
+	err := traverse.Traverse(node, options)
 	if err != nil {
 		log.Debugf("[traverseMerkelDag] traverse error : %s", err)
 	}
@@ -981,7 +982,7 @@ func (this *MaxService) WriteFileFromDAG(rootCid *cid.Cid, outPath string) error
 	extractor := tar.Extractor{Path: outPath}
 
 	err = extractor.Extract(reader)
-	if err != nil{
+	if err != nil {
 		log.Errorf("[WriteFileFromDAG] extract error : %s", err)
 		return err
 	}
