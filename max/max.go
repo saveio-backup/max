@@ -983,6 +983,7 @@ func (this *MaxService) WriteFileFromDAG(rootCid *cid.Cid, outPath string) error
 	err = extractor.Extract(reader)
 	if err != nil{
 		log.Errorf("[WriteFileFromDAG] extract error : %s", err)
+		return err
 	}
 	return nil
 }
