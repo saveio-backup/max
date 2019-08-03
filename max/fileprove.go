@@ -105,13 +105,13 @@ func (this *MaxService) getProveTasks() ([]*fsstore.ProveParam, error) {
 	return params, nil
 }
 
-func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string){
+func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string) {
 	notify := &ProveTaskRemovalNotify{
 		FileHash: fileHash,
-		Reason: reason,
+		Reason:   reason,
 	}
 
-	go func(){
+	go func() {
 		log.Debugf("[notifyProveTaskDeletion] notify remove prove task for fileHash : %s, reason : %s", fileHash, reason)
 		this.Notify <- notify
 	}()
@@ -230,19 +230,19 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			}
 		}
 
-		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ChallengeTimes)
-		if times == fileInfo.ChallengeTimes+1 {
+		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
+		if times == fileInfo.ProveTimes+1 {
 			err = this.DeleteFile(fileHash)
 			if err != nil {
 				log.Errorf("[proveFile] DeleteFile for fileHash %s error : %s", fileHash, err)
 				return err
 			}
 			log.Debugf("[proveFile] finish file prove for %s", fileHash)
-			this.notifyProveTaskDeletion(fileHash,PROVE_TASK_REMOVAL_REASON_NORMAL)
+			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
 			return nil
 		}
 
-		expireState := checkProveExpire(uint64(height), fileInfo.BlockHeight, times, fileInfo.ChallengeRate)
+		expireState := checkProveExpire(uint64(height), fileInfo.BlockHeight, times, fileInfo.ProveTimes)
 		switch expireState {
 		case EXPIRE_NEED_PROVE:
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
