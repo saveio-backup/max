@@ -335,6 +335,7 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 		attr, ok := attrs[uint64(c.Index-1)]
 		if !ok {
 			log.Errorf("[internalProveFile] tag not found for fileHash %s index %d", fileHash, c.Index)
+			panic("tag not found")
 			return false, fmt.Errorf("file:%s, tag not found for index:%d", fileHash, c.Index)
 		}
 		tags = append(tags, attr.Tag)
