@@ -677,7 +677,7 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 		indexes = append(indexes, attr.Index)
 	}
 
-	log.Debugf("[getTagIndexes] succuess for fileHash : %s, blockHash : %s", fileHash, blockHash)
+	log.Debugf("[getTagIndexes] succuess for fileHash : %s, blockHash : %s, indexes : %v", fileHash, blockHash, indexes)
 	return indexes, nil
 }
 

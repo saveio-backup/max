@@ -324,6 +324,9 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 				log.Errorf("[internalProveFile] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockHash, fileHash, index, err)
 				return false, err
 			}
+			if attr.Index != index {
+				log.Errorf("[internalProveFile] attr.Index and index not same : attr.Index %d, index %d", attr.Index, index)
+			}
 			attrs[attr.Index] = attr
 		}
 	}
