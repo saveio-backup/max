@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -635,6 +636,120 @@ func TestPutGetTag(t *testing.T) {
 			t.Fatal("index not match")
 		}
 	}
+}
+
+func TestPutGetTagMulti(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileHash := RandStringBytes(20)
+	fileHash2 := RandStringBytes(20)
+	fileHash3 := RandStringBytes(20)
+	fileHash4 := RandStringBytes(20)
+	fileHash5 := RandStringBytes(20)
+
+	var wg sync.WaitGroup
+	var group1 []*TagConfig
+	var group2 []*TagConfig
+	var group3 []*TagConfig
+	var group4 []*TagConfig
+	var group5 []*TagConfig
+
+	count := 100
+
+	wg.Add(5)
+	go func() {
+		group1 = initTagConfigs(count, fileHash, &wg)
+	}()
+
+	go func() {
+		group2 = initTagConfigs(count, fileHash2, &wg)
+	}()
+	go func() {
+		group3 = initTagConfigs(count, fileHash3, &wg)
+	}()
+	go func() {
+		group4 = initTagConfigs(count, fileHash4, &wg)
+	}()
+	go func() {
+		group5 = initTagConfigs(count, fileHash5, &wg)
+	}()
+
+	wg.Wait()
+
+	wg.Add(5)
+	go putTags(max, group1, t, &wg)
+	go putTags(max, group2, t, &wg)
+	go putTags(max, group3, t, &wg)
+	go putTags(max, group4, t, &wg)
+	go putTags(max, group5, t, &wg)
+	wg.Wait()
+
+	wg.Add(5)
+	go getTagIndexes(max, group1, t, &wg)
+	go getTagIndexes(max, group2, t, &wg)
+	go getTagIndexes(max, group3, t, &wg)
+	go getTagIndexes(max, group4, t, &wg)
+	go getTagIndexes(max, group5, t, &wg)
+
+	wg.Wait()
+}
+
+func initTagConfigs(count int, fileHash string, wg *sync.WaitGroup) []*TagConfig {
+	var tag []byte
+	var group []*TagConfig
+
+	for index := 0; index < count; index++ {
+		blockHash := RandStringBytes(20)
+		rand.Read(tag)
+		tag := &TagConfig{blockHash, fileHash, uint64(index), tag}
+		group = append(group, tag)
+	}
+
+	wg.Done()
+	return group
+}
+
+func putTags(max *MaxService, group []*TagConfig, t *testing.T, wg *sync.WaitGroup) {
+	for _, config := range group {
+		err := max.PutTag(config.blockHash, config.fileHash, config.index, config.tag)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(20 * time.Millisecond)
+		err = getAndCheckTag(max, config.blockHash, config.fileHash, config.index, config.tag)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wg.Done()
+}
+
+func getTagIndexes(max *MaxService, group []*TagConfig, t *testing.T, wg *sync.WaitGroup) {
+	for index, config := range group {
+		indexes, err := max.getTagIndexes(config.blockHash, config.fileHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(indexes) != 1 {
+			t.Fatalf("len error for index %d, len %d", index, len(indexes))
+		}
+
+		if indexes[0] != config.index {
+			t.Fatalf("len error")
+		}
+	}
+	wg.Done()
 }
 
 func getAndCheckTag(max *MaxService, blockHash string, fileHash string, index uint64, tag []byte) error {
