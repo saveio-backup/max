@@ -146,6 +146,11 @@ func getBufWithPrefix(buf []byte, prefix string) []byte {
 	return bufWithPrefix
 }
 
+func getBufWithoutPrefix(buf []byte, prefix string) []byte {
+	prefixLen := len([]byte(prefix))
+	return buf[prefixLen:]
+}
+
 func getCurrentDirectory() string {
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
@@ -368,6 +373,7 @@ type Result struct {
 	root     string
 	list     []string
 	buf      []byte // file content with prefix
+	filePath string
 }
 
 // init fs, add file, then check file content
@@ -477,7 +483,7 @@ func addFileAndCheckFileContent(max *MaxService, initCfg *Config, fileCfg *FileC
 		return nil, err
 	}
 
-	result := &Result{max, repoRoot, hashes[0], hashes[1:], getBufWithPrefix(buf, fileCfg.prefix)}
+	result := &Result{max, repoRoot, hashes[0], hashes[1:], getBufWithPrefix(buf, fileCfg.prefix), fname}
 
 	return result, nil
 }
@@ -770,7 +776,7 @@ func TestGetTagIndex(t *testing.T) {
 
 }
 
-func TestAddFile(t *testing.T) {
+func TestAddFileBlockStore(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
 
 	if err != nil {
@@ -802,6 +808,107 @@ func TestAddFile(t *testing.T) {
 	}
 
 	err = checkFileContent(max, cids, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAddFileFileStore(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := make([]byte, 100*CHUNK_SIZE)
+	rand.Read(buf)
+
+	fname, err := makeTempFile(testdir, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix := RandStringBytes(20)
+	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cids, err := getCidsFromNodelist(hashes[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// test when same file with differnt path are added with filestore
+// remove one file will not impact the other file
+func TestFileStoreMultiPath(t *testing.T) {
+	prefix := RandStringBytes(20)
+
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, prefix, false, "", nil}
+
+	result, err := addFileAndCheckFileContent(nil, initCfg, fileCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := result.list
+	max := result.max
+	buf := result.buf
+	filePath := result.filePath
+
+	cids, err := getCidsFromNodelist(list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids, result.buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make 2nd file with same content
+	testdir, err := ioutil.TempDir("", "filestore-test")
+	fname, err := makeTempFile(testdir, getBufWithoutPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//add 2nd file with same prefix but differnt path
+	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cids2, err := getCidsFromNodelist(hashes[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids2, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// remove the first file
+	err = os.Remove(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check content can still be read
+	err = checkFileContent(max, cids2, getBufWithPrefix(buf, prefix))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1347,6 +1454,7 @@ func compareByteSlice(a []byte, b []byte) bool {
 
 	return true
 }
+
 func TestWriteFileNorm(t *testing.T) {
 	defaultConfig := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
 

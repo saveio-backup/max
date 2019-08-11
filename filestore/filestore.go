@@ -176,7 +176,10 @@ func (f *Filestore) Put(b blocks.Block) error {
 	}
 
 	if has {
-		return nil
+		// file store dont return in order to update path info
+		if _, ok := b.(*posinfo.FilestoreNode); !ok {
+			return nil
+		}
 	}
 
 	switch b := b.(type) {

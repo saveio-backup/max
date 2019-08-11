@@ -136,18 +136,50 @@ func (f *FileManager) getDataObj(c *cid.Cid) (*pb.DataObj, error) {
 	return unmarshalDataObj(o)
 }
 
+// find one valid DataObj and return
 func unmarshalDataObj(o interface{}) (*pb.DataObj, error) {
+	dobjs, err := unmarshalDataObjs(o)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range dobjs {
+		abspath := filepath.FromSlash(d.GetFilePath())
+		_, err := os.Stat(abspath)
+		if err == nil {
+			return d, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid data objcet found")
+}
+
+func (f *FileManager) getDataObjs(c *cid.Cid) ([]*pb.DataObj, error) {
+	o, err := f.ds.Get(dshelp.CidToDsKey(c))
+	switch err {
+	case ds.ErrNotFound:
+		return nil, blockstore.ErrNotFound
+	default:
+		return nil, err
+	case nil:
+		//
+	}
+
+	return unmarshalDataObjs(o)
+}
+
+func unmarshalDataObjs(o interface{}) ([]*pb.DataObj, error) {
 	data, ok := o.([]byte)
 	if !ok {
 		return nil, fmt.Errorf("stored filestore dataobj was not a []byte")
 	}
 
-	var dobj pb.DataObj
-	if err := proto.Unmarshal(data, &dobj); err != nil {
+	var dobjs pb.DataObjs
+
+	if err := proto.Unmarshal(data, &dobjs); err != nil {
 		return nil, err
 	}
-
-	return &dobj, nil
+	return dobjs.GetObjects(), nil
 }
 
 // reads and verifies the block
@@ -251,11 +283,31 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 		return err
 	}
 
-	dobj.FilePath = proto.String(filepath.ToSlash(abspath))
-	dobj.Offset = proto.Uint64(b.PosInfo.Offset)
-	dobj.Size_ = proto.Uint64(uint64(len(b.RawData())))
+	// check if same path already exist
+	dobjs, err := f.getDataObjs(b.Cid())
+	if err != nil && err != blockstore.ErrNotFound {
+		return fmt.Errorf("get data objects error : %s", err)
+	}
 
-	data, err := proto.Marshal(&dobj)
+	for _, d := range dobjs {
+		// path exist, no need to store
+		if filepath.ToSlash(abspath) == filepath.ToSlash(d.GetFilePath()) {
+			return nil
+		}
+	}
+
+	dobj.FilePath = filepath.ToSlash(abspath)
+	dobj.Offset = b.PosInfo.Offset
+	dobj.Size_ = uint64(len(b.RawData()))
+
+	var objs []*pb.DataObj
+
+	if dobjs != nil {
+		objs = append(objs, dobjs[:]...)
+	}
+	objs = append(objs, &dobj)
+
+	data, err := proto.Marshal(&pb.DataObjs{objs})
 	if err != nil {
 		return err
 	}

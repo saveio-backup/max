@@ -5,3 +5,7 @@ message DataObj {
         optional uint64 Offset = 2;
         optional uint64 Size = 3;
 }
+
+message DataObjs{
+        repeated DataObj objects = 1;
+}
