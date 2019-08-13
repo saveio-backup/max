@@ -850,6 +850,79 @@ func TestAddFileFileStore(t *testing.T) {
 	}
 }
 
+func TestAddFileFileStoreDuplicateBlocks(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := make([]byte, 100*CHUNK_SIZE)
+
+	fname, err := makeTempFile(testdir, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix := RandStringBytes(20)
+	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashMap := make(map[string]int)
+	for _, hash := range hashes {
+		nodeCid, err := cid.Decode(hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hashMap[nodeCid.String()]++
+	}
+
+	//check hashes returned from NodesFromFile includes duplicates
+	duplicates := false
+	for hashStr, count := range hashMap {
+		fmt.Printf("%s : %d\n", hashStr, count)
+		if count > 1 {
+			duplicates = true
+		}
+	}
+
+	if !duplicates {
+		t.Fatalf("no duplicates in hashes")
+	}
+
+	cids, err := getCidsFromNodelist(hashes[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootCid, err := cid.Decode(hashes[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	// NOTE: cids will not include root cid or other intermediate cids who has no data
+	cids2, offsets, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContentWithOffset(max, cids2, offsets, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // test when same file with differnt path are added with filestore
 // remove one file will not impact the other file
 func TestFileStoreMultiPath(t *testing.T) {

@@ -917,11 +917,12 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 }
 
 func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func) error {
+	// dont skip duplicates, otherwise the offset will be wrong if file has duplicates
 	options := traverse.Options{
 		DAG:            this.dag,
 		Order:          traverse.BFS,
 		Func:           travFunc,
-		SkipDuplicates: true,
+		SkipDuplicates: false,
 	}
 
 	err := traverse.Traverse(node, options)
