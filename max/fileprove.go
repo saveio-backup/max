@@ -51,21 +51,15 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		go this.proveFileService()
 	})
 
-	if !this.loadingtasks {
-		// store the task to db
-		err = this.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
-		if err != nil {
-			log.Errorf("[StartPDPVerify] saveProveTask for filehash: %s error : %s", fileHash, err)
-			return err
-		}
-	}
-	this.provetasks.Store(fileHash, struct{}{})
-
 	fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	if err != nil {
 		// not found prove for the first time
 		log.Debugf("[StartPDPVerify] first prove for filehash: %s, GetFileProveDetails error : %s", fileHash, err)
-		go this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		err = this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		if err != nil {
+			log.Debugf("[StartPDPVerify] proveFile for filehash: %s, error : %s", fileHash, err)
+			return err
+		}
 	} else {
 		var found bool
 		for _, detail := range fileProveDetails.ProveDetails {
@@ -79,9 +73,24 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		// first prove, when prove detail found but not provetask, it means the fs node has restarted
 		if !found {
 			log.Debugf("[StartPDPVerify] first prove when prove detail found for filehash: %s", fileHash)
-			go this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+			err = this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+			if err != nil {
+				log.Debugf("[StartPDPVerify] proveFile for filehash: %s, error : %s", fileHash, err)
+				return err
+			}
 		}
 	}
+
+	// save prove task only when first prove success
+	if !this.loadingtasks {
+		// store the task to db
+		err = this.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		if err != nil {
+			log.Errorf("[StartPDPVerify] saveProveTask for filehash: %s error : %s", fileHash, err)
+			return err
+		}
+	}
+	this.provetasks.Store(fileHash, struct{}{})
 
 	return nil
 }
