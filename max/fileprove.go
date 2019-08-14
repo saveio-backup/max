@@ -153,7 +153,6 @@ func (this *MaxService) loadPDPTasksOnStartup() error {
 		err = this.StartPDPVerify(param.FileHash, param.LuckyNum, param.BakHeight, param.BakNum, param.BrokenWalletAddr)
 		if err != nil {
 			log.Errorf("[loadPDPTasksOnStartup] StartPDPVerify for fileHash %s error : %s", param.FileHash, err)
-			return err
 		}
 	}
 
