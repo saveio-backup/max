@@ -292,7 +292,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	_, err = this.internalProveFile(fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, hash, height, luckyNum, bakHeight, bakNum, brokenWalletAddr)
 	if err != nil {
 		log.Errorf("[proveFile] internalProveFile for fileHash %s error : %s", fileHash, err)
-		return nil
+		return err
 	}
 
 	// for backup node, after first prove, following prove parmeter should use default value
