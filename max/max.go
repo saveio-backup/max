@@ -65,7 +65,7 @@ const (
 
 const (
 	MAX_RETRY_REQUEST_TIMES            = 6  // max request retry times
-	MAX_REQUEST_TIMEWAIT               = 10 // request time wait in second
+	MAX_REQUEST_TIMEWAIT               = 1  // request time wait in second
 	PROVE_FILE_INTERVAL                = 10 // 10s proves
 	MAX_PROVE_FILE_ROUTINES            = 10 // maximum of concurrent check prove files
 	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE = 10 // default remove notify channel size
