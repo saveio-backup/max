@@ -697,6 +697,8 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 					log.Errorf("[DeleteFile] DeleteBlockAttr error : %s", err)
 					return err
 				}
+				log.Debugf("[Delete] delete tag success for fileHash : %s, blockHash : %s, index : %d",
+					attr.FileHash, attr.Hash, strconv.FormatUint(attr.Index, 10))
 			}
 		}
 
