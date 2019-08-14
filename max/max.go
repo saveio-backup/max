@@ -71,6 +71,7 @@ const (
 	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE = 10 // default remove notify channel size
 	PROVE_TASK_REMOVAL_REASON_NORMAL   = "success"
 	PROVE_TASK_REMOVAL_REASON_EXPIRE   = "expire"
+	PROVE_TASK_REMOVAL_REASON_DELETE   = "file deleted"
 )
 
 type ProveTaskRemovalNotify struct {

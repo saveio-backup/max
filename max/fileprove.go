@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,6 +207,19 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	fileInfo, err := fsContract.GetFileInfo(fileHash)
 	if err != nil {
 		log.Errorf("[proveFile] GetFileInfo for fileHash : %s error : %s", fileHash, err)
+
+		// prove task should be deleted when fileInfo is deleted
+		if strings.Contains(err.Error(), "FsGetFileInfo not found!") {
+			log.Debugf("[proveFile] GetFileInfo for fileHash : %s, fileInfo is deleted, remove prove task", fileHash)
+			err = this.DeleteFile(fileHash)
+			if err != nil {
+				log.Errorf("[proveFile] DeleteFile for fileHash %s error : %s", fileHash, err)
+				return err
+			}
+			log.Debugf("[proveFile] file info deleted, remove file prove for %s", fileHash)
+			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
+			return nil
+		}
 		return err
 	}
 
