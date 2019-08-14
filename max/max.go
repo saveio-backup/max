@@ -684,6 +684,12 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 
 // delete file according to fileHash, only applicable for the FS node
 func (this *MaxService) DeleteFile(fileHash string) error {
+	_, err := cid.Decode(fileHash)
+	if err != nil {
+		log.Errorf("[DeleteFile] failed to decode fileHash %s, error : %s", fileHash, err)
+		return err
+	}
+
 	if !this.IsFileStore() {
 		blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
 		if err != nil {
@@ -697,7 +703,7 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 					log.Errorf("[DeleteFile] DeleteBlockAttr error : %s", err)
 					return err
 				}
-				log.Debugf("[Delete] delete tag success for fileHash : %s, blockHash : %s, index : %d",
+				log.Debugf("[DeleteFile] delete tag success for fileHash : %s, blockHash : %s, index : %d",
 					attr.FileHash, attr.Hash, strconv.FormatUint(attr.Index, 10))
 			}
 		}
