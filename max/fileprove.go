@@ -237,6 +237,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 
 	if !first {
 		var times uint64
+		var firstProveHeight uint64
 
 		log.Debugf("[proveFile] not first prove for fileHash %s", fileHash)
 		fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
@@ -245,12 +246,20 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return err
 		}
 
+		found := false
 		for _, detail := range fileProveDetails.ProveDetails {
 			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
 				times = detail.ProveTimes
-				log.Debugf("[proveFile] find matching prove details for fileHash : %s, times :%d", fileHash, times)
+				firstProveHeight = detail.BlockHeight
+				log.Debugf("[proveFile] find matching prove detail for fileHash : %s, times :%d", fileHash, times)
+				found = true
 				break
 			}
+		}
+
+		if !found {
+			log.Debugf("[proveFile] cannot find matching prove detail for fileHash : %s", fileHash)
+			return fmt.Errorf("prove detail not found for fileHash %s", fileHash)
 		}
 
 		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
@@ -265,7 +274,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return nil
 		}
 
-		expireState := checkProveExpire(uint64(height), fileInfo.BlockHeight, times, fileInfo.ProveTimes)
+		expireState := checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveTimes)
 		switch expireState {
 		case EXPIRE_NEED_PROVE:
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
@@ -442,12 +451,12 @@ const (
 	EXPIRE_NEED_PROVE // need to submit the prove
 )
 
-func checkProveExpire(currBlockHeight uint64, fileBlockHeight uint64, provedTimes uint64, challengeRate uint64) ExpireState {
-	expireMinHeight := fileBlockHeight + provedTimes*challengeRate
-	expireMaxHeight := fileBlockHeight + (provedTimes+1)*challengeRate
+func checkProveExpire(currBlockHeight uint64, firstProveHeight uint64, provedTimes uint64, challengeRate uint64) ExpireState {
+	expireMinHeight := firstProveHeight + provedTimes*challengeRate
+	expireMaxHeight := firstProveHeight + (provedTimes+1)*challengeRate
 
-	log.Debugf("[checkProveExpire] currBlockHeight :%d, fileBlockHeight :%d, provedTimes :%d, challengeRate :%d",
-		currBlockHeight, fileBlockHeight, provedTimes, challengeRate)
+	log.Debugf("[checkProveExpire] currBlockHeight :%d, firstProveHeight :%d, provedTimes :%d, challengeRate :%d",
+		currBlockHeight, firstProveHeight, provedTimes, challengeRate)
 	if currBlockHeight > expireMaxHeight {
 		return EXPIRE_AFTER_MAX
 	} else if currBlockHeight < expireMinHeight {
