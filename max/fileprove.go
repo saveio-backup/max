@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -339,46 +338,31 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 		return false, err
 	}
 
-	attrs := make(map[uint64]*fsstore.BlockAttr, 0)
-	for _, cid := range cids {
-		blockHash := cid.String()
-		// get all indexes for a blockHash, blocks with same cid but differnt index have differnt tags
-		indexes, err := this.getTagIndexes(blockHash, fileHash)
-		if err != nil {
-			log.Errorf("[internalProveFile] getTagIndexes for blockHash %s fileHash %s error : %s", blockHash, fileHash, err)
-			return false, err
-		}
+	var blockCid *cid.Cid
+	var index uint64
+	var attrKey string
+	var attr *fsstore.BlockAttr
 
-		for _, index := range indexes {
-			attrKey := fileHash + blockHash + strconv.FormatUint(index, 10)
-			attr, err := this.fsstore.GetBlockAttr(attrKey)
-			if err != nil {
-				log.Errorf("[internalProveFile] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockHash, fileHash, index, err)
-				return false, err
-			}
-			if attr.Index != index {
-				log.Errorf("[internalProveFile] attr.Index and index not same : attr.Index %d, index %d", attr.Index, index)
-			}
-			attrs[attr.Index] = attr
-		}
-	}
-
+	cidsLen := uint64(len(cids))
 	for _, c := range challenges {
-		attr, ok := attrs[uint64(c.Index-1)]
-		if !ok {
-			log.Errorf("[internalProveFile] tag not found for fileHash %s index %d", fileHash, c.Index)
-			log.Debugf("stack: %s\n", string(debug.Stack()))
-			return false, fmt.Errorf("file:%s, tag not found for index:%d", fileHash, c.Index)
+		index = uint64(c.Index - 1)
+		if index+1 > cidsLen {
+			log.Errorf("[internalProveFile] invalid index for fileHash %s index %d", fileHash, index)
+			return false, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
 		}
-		tags = append(tags, attr.Tag)
-		blockCId, err := cid.Decode(attr.Hash)
+
+		blockCid = cids[index]
+		attrKey = fileHash + blockCid.String() + strconv.FormatUint(index, 10)
+		attr, err = this.fsstore.GetBlockAttr(attrKey)
 		if err != nil {
-			log.Errorf("[internalProveFile] Decode hash %s error : %s", attr.Hash, err)
+			log.Errorf("[internalProveFile] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
 			return false, err
 		}
-		blk, err := this.GetBlock(blockCId)
+
+		tags = append(tags, attr.Tag)
+		blk, err := this.GetBlock(blockCid)
 		if err != nil {
-			log.Errorf("[internalProveFile] GetBlock for block %s error : %s", blockCId.String(), err)
+			log.Errorf("[internalProveFile] GetBlock for block %s error : %s", blockCid.String(), err)
 			return false, err
 		}
 		blocks = append(blocks, blk.RawData())
