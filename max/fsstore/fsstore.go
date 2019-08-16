@@ -19,6 +19,7 @@ const (
 	BLOCK_TAG_INDEX_PREFIX = "blocktagindex:"
 	FILE_PREFIX_KEY        = "fileprefix:"
 	PROVE_PARAM_KEY        = "proveparam"
+	FILE_BLOCKHASH_KEY     = "fileblockhash:"
 )
 
 type BlockAttr struct {
@@ -89,6 +90,19 @@ func (p *ProveParam) Serialization() ([]byte, error) {
 }
 
 func (p *ProveParam) Deserialization(raw []byte) error {
+	return json.Unmarshal(raw, p)
+}
+
+type FileBlockHash struct {
+	FileHash    string   `json:"filehash"`
+	BlockHashes []string `json:"blockhahses"`
+}
+
+func (p *FileBlockHash) Serialization() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *FileBlockHash) Deserialization(raw []byte) error {
 	return json.Unmarshal(raw, p)
 }
 
@@ -264,6 +278,43 @@ func (fss *FsStore) DeleteProveParam(key string) error {
 	return err
 }
 
+func (fss *FsStore) GetFileBlockHashes(key string) (*FileBlockHash, error) {
+	if len(key) == 0 {
+		return nil, errors.New("fileblockhash: key is nil")
+	}
+	bdata, err := fss.db.Get(genFileBlockHashKey(key))
+	if err != nil {
+		return nil, err
+	}
+	p := &FileBlockHash{}
+	err = p.Deserialization(bdata)
+	if err != nil {
+		return nil, errors.New("the retrieved value is not a fileblockhash")
+	}
+	return p, nil
+}
+
+// Put a BlockAttr into storage, key is blockhash-filehash
+func (fss *FsStore) PutFileBlockHash(key string, p *FileBlockHash) error {
+	if len(key) == 0 {
+		return errors.New("fileblockhash: key is nil")
+	}
+	data, err := p.Serialization()
+	if err != nil {
+		return err
+	}
+	return fss.db.Put(genFileBlockHashKey(key), data)
+}
+
+// DeleteBlockAttr delete a block attributes value
+func (fss *FsStore) DeleteFileBlockHash(key string) error {
+	if len(key) == 0 {
+		return errors.New("fileblockhash: key is nil")
+	}
+	err := fss.db.Delete(genFileBlockHashKey(key))
+	return err
+}
+
 func genBlockAttrKey(k string) string {
 	return BLOCK_ATTR_PREFIX + k
 }
@@ -278,4 +329,8 @@ func genFilePrefixesKey(k string) string {
 
 func genProveParamKey(k string) string {
 	return PROVE_PARAM_KEY + k
+}
+
+func genFileBlockHashKey(k string) string {
+	return FILE_BLOCKHASH_KEY + k
 }

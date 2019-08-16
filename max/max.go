@@ -714,6 +714,12 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 			log.Errorf("[DeleteFile] delete prove task error: %s", err)
 		}
 		log.Debugf("[DeleteFile] delete prove task for fileHash : %s", fileHash)
+
+		err = this.fsstore.DeleteFileBlockHash(fileHash)
+		if err != nil {
+			log.Errorf("[DeleteFile] delete fileblockhash error: %s", err)
+		}
+		log.Debugf("[DeleteFile] delete fileblockhash : %s", fileHash)
 	}
 	return this.deleteFile(fileHash)
 }
@@ -859,6 +865,24 @@ func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
 
 func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([]*cid.Cid, error) {
 	var cids []*cid.Cid
+	var blockHashes []string
+
+	hashes, err := this.fsstore.GetFileBlockHashes(rootCid.String())
+	if err == nil {
+		for _, blockHash := range hashes.BlockHashes {
+			cid, err := cid.Decode(blockHash)
+			if err != nil {
+				log.Errorf("[GetFileAllCids] Decode blockhash %s error : %s", blockHash, err)
+				return nil, err
+			}
+
+			cids = append(cids, cid)
+		}
+		return cids, nil
+	} else if err != dbstore.ErrNotFound {
+		log.Errorf("[GetFileAllCids] GetFileBlockHashes error : %s", err)
+		return nil, err
+	}
 
 	dagNode, err := this.checkRootForGetCid(rootCid)
 	if err != nil {
@@ -879,6 +903,16 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 	err = this.traverseMerkelDag(dagNode, getCid)
 	if err != nil {
 		log.Errorf("[GetFileAllCids] traverseMerkelDag error : %s", err)
+		return nil, err
+	}
+
+	for _, cid := range cids {
+		blockHashes = append(blockHashes, cid.String())
+	}
+
+	err = this.fsstore.PutFileBlockHash(rootCid.String(), &fsstore.FileBlockHash{rootCid.String(), blockHashes})
+	if err != nil {
+		log.Errorf("[GetFileAllCids] PutFileBlockHash error for %s, error: %s", rootCid.String(), err)
 		return nil, err
 	}
 
