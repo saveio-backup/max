@@ -273,7 +273,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return nil
 		}
 
-		expireState := checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveTimes)
+		expireState := checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval)
 		switch expireState {
 		case EXPIRE_NEED_PROVE:
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
