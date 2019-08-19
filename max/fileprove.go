@@ -273,7 +273,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return nil
 		}
 
-		expireState := checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval)
+		expireState := checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval, fileInfo.ExpiredHeight)
 		switch expireState {
 		case EXPIRE_NEED_PROVE:
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
@@ -435,15 +435,19 @@ const (
 	EXPIRE_NEED_PROVE // need to submit the prove
 )
 
-func checkProveExpire(currBlockHeight uint64, firstProveHeight uint64, provedTimes uint64, challengeRate uint64) ExpireState {
+func checkProveExpire(currBlockHeight uint64, firstProveHeight uint64, provedTimes uint64, challengeRate uint64, expiredHeight uint64) ExpireState {
 	expireMinHeight := firstProveHeight + provedTimes*challengeRate
 	expireMaxHeight := firstProveHeight + (provedTimes+1)*challengeRate
 
-	log.Debugf("[checkProveExpire] currBlockHeight :%d, firstProveHeight :%d, provedTimes :%d, challengeRate :%d",
-		currBlockHeight, firstProveHeight, provedTimes, challengeRate)
+	log.Debugf("[checkProveExpire] currBlockHeight :%d, firstProveHeight :%d, provedTimes :%d, challengeRate :%d, expiredHeight : %d",
+		currBlockHeight, firstProveHeight, provedTimes, challengeRate, expiredHeight)
 	if currBlockHeight > expireMaxHeight {
 		return EXPIRE_AFTER_MAX
 	} else if currBlockHeight < expireMinHeight {
+		// dont wait for next interval if expiredHeight has reached
+		if currBlockHeight > expiredHeight {
+			return EXPIRE_NEED_PROVE
+		}
 		return EXPIRE_BEFORE_MIN
 	} else {
 		return EXPIRE_NEED_PROVE
