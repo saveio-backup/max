@@ -424,10 +424,26 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 				return nil, err
 			}
 
-			_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, out, subList)
+			cids, _, err := this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), out, subList)
 			if err != nil {
 				log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
 				return nil, err
+			}
+
+			//compute hash based on cid
+			for _, cid := range cids {
+				blockHashes = append(blockHashes, cid.String())
+			}
+
+			for _, node := range subList {
+				dagNode, err := node.GetDagNode()
+				if err != nil {
+					log.Errorf("[NodesFromLargeFile] GetDagNode error : %s", err)
+					return nil, err
+				}
+
+				// return memory to mpool!
+				mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
 			}
 		} else {
 			for _, node := range subList {
@@ -466,7 +482,7 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 	log.Debugf("[NodesFromLargeFile]: return %d blockHashes", len(blockHashes))
 
 	if this.IsFileStore() && !encrypt {
-		_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, root, []*helpers.UnixfsNode{})
+		_, _, err = this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), root, []*helpers.UnixfsNode{})
 		if err != nil {
 			log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
 			return nil, err
@@ -663,6 +679,52 @@ func (this *MaxService) buildFileStoreForFile(fileName, filePrefix string, root 
 	}
 
 	log.Debugf("[buildFileStoreForFile] success for fileName : %s, filePrefix : %s", fileName, filePrefix)
+	return cids, offsets, nil
+}
+
+func (this *MaxService) buildFileStoreForFileOffset(fileName, filePrefix string, offset uint64, root ipld.Node, nodes []*helpers.UnixfsNode) ([]*cid.Cid, []uint64, error) {
+	var offsets []uint64
+	var cids []*cid.Cid
+	var n ipld.Node
+
+	err := this.SetFilePrefix(fileName, filePrefix)
+	if err != nil {
+		log.Errorf("[buildFileStoreForFileOffset] SetFilePrefix error : %s", err)
+		return nil, nil, err
+	}
+
+	this.blockstore.Put(root)
+
+	for _, node := range nodes {
+		dagNode, _ := node.GetDagNode()
+
+		// no links means leaf node with content and is saved as leaf nodes
+		if len(dagNode.Links()) == 0 {
+			n = &posinfo.FilestoreNode{
+				PosInfo: &posinfo.PosInfo{
+					FullPath: fileName,
+					Offset:   offset,
+				},
+				Node: dagNode,
+			}
+			cids = append(cids, dagNode.Cid())
+			offsets = append(offsets, offset)
+			offset += this.config.ChunkSize
+		} else {
+			// dagnode are stored in the backed blockstore in order to keep link information
+			n = dagNode
+		}
+
+		// it is possible that we already put the cid, but it is ok,
+		// since when get the cid, the content is the same even the posinfo not same
+		err := this.blockstore.Put(n)
+		if err != nil {
+			log.Errorf("[buildFileStoreForFileOffset] put block to block store error : %s", err)
+			return nil, nil, err
+		}
+	}
+
+	log.Debugf("[buildFileStoreForFileOffset] success for fileName : %s, filePrefix : %s", fileName, filePrefix)
 	return cids, offsets, nil
 }
 
