@@ -18,6 +18,7 @@ import (
 	chunker "gx/ipfs/QmWo8jYc19ppG7YoTsrr2kEtLRbARTJho5oNXFTR6B7Peq/go-ipfs-chunker"
 	retry "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/retrystore"
 	dssync "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/sync"
+	mpool "gx/ipfs/QmWBug6eBS7AxRdCDVuSY5CnSit7cS2XnPFYJWqWDumhCG/go-msgio/mpool"
 	mh "gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
 	bstore "gx/ipfs/QmaG4DZ4JaqEfvPWt5nPPgoTzhc1tr1T3f4Nu9Jpdm8ymY/go-ipfs-blockstore"
 	posinfo "gx/ipfs/Qmb3jLEFAQrqdVgWUajqEyuuDoavkSq1XQXz6tWdFWF995/go-ipfs-posinfo"
@@ -72,6 +73,10 @@ const (
 	PROVE_TASK_REMOVAL_REASON_NORMAL   = "success"
 	PROVE_TASK_REMOVAL_REASON_EXPIRE   = "expire"
 	PROVE_TASK_REMOVAL_REASON_DELETE   = "file deleted"
+)
+
+const (
+	LARGE_FILE_THRESHOLD = 256 * 1024 * 1024
 )
 
 type ProveTaskRemovalNotify struct {
@@ -293,6 +298,16 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 		return nil, err
 	}
 
+	fileInfo, err := os.Stat(absFileName)
+	if err != nil {
+		log.Errorf("[NodesFromFile] get file size error for %s, err: %s", absFileName, err)
+		return nil, err
+	}
+	fileSize := fileInfo.Size()
+	if fileSize > LARGE_FILE_THRESHOLD {
+		return this.NodesFromLargeFile(fileName, filePrefix, encrypt, password)
+	}
+
 	root, list, err := this.GetAllNodesFromFile(absFileName, filePrefix, encrypt, password)
 	if err != nil {
 		log.Errorf("[NodesFromFile] GetAllNodesFromFile error : %s", err)
@@ -365,6 +380,180 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 
 	log.Debugf("[NodesFromFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
 	return blockHashes, nil
+}
+
+func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, encrypt bool, password string) (blockHashes []string, err error) {
+	absFileName, err := filepath.Abs(fileName)
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] get abs path error for %s, err: %s", fileName, err)
+		return nil, err
+	}
+
+	db, file, err := this.PrepareHelper(fileName, filePrefix, encrypt, password)
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] fail to prepare DAG builder err: %s", fileName, err)
+		return nil, err
+	}
+	defer file.Close()
+
+	var list = []*helpers.UnixfsNode{}
+
+	nroot := db.NewUnixfsNode()
+	db.SetPosInfo(nroot, 0)
+	db.SetOffset(0)
+	for !db.Done() {
+		log.Debugf("[NodesFromLargeFile]: db offset : %d", db.GetOffset())
+
+		subRoot, subList, err := balanced.LayoutAndGetUnixFsNodes(db)
+		if err != nil {
+			log.Errorf("[NodesFromLargeFile]: LayoutAndGetUnixFsNodes error : %s", err)
+			return nil, err
+		}
+		log.Debugf("[NodesFromLargeFile]: finish one round LayoutAndGetUnixFsNodes tree size: %d, len(list) : %d", subRoot.FileSize(), len(subList))
+
+		if err := nroot.AddChild(subRoot, db); err != nil {
+			return nil, err
+		}
+
+		list = append(list, subList...)
+
+		if this.IsFileStore() && !encrypt {
+			out, err := subRoot.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] fail to get Dag node for subroot : %s", err)
+				return nil, err
+			}
+
+			_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, out, subList)
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
+				return nil, err
+			}
+		} else {
+			for _, node := range subList {
+				dagNode, err := node.GetDagNode()
+				if err != nil {
+					log.Errorf("[NodesFromLargeFile] GetDagNode error : %s", err)
+					return nil, err
+				}
+
+				err = this.blockstore.Put(dagNode)
+				if err != nil {
+					log.Errorf("[NodesFromLargeFile] put dagNode to block store error : %s", err)
+					return nil, err
+				}
+
+				//compute hash based on cid
+				blockHashes = append(blockHashes, dagNode.Cid().String())
+
+				// return memory to mpool!
+				mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+			}
+		}
+
+		// prepare for next round
+		db.SetOffset(db.GetOffset() + subRoot.FileSize())
+	}
+
+	// get final root
+	root, err := nroot.GetDagNode()
+	if err != nil {
+		return nil, err
+	}
+
+	hashes := append([]string{}, root.Cid().String())
+	blockHashes = append(hashes, blockHashes...)
+	log.Debugf("[NodesFromLargeFile]: return %d blockHashes", len(blockHashes))
+
+	if this.IsFileStore() && !encrypt {
+		_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, root, []*helpers.UnixfsNode{})
+		if err != nil {
+			log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
+			return nil, err
+		}
+	} else {
+		// when encryption is used, cannot only use filestore since we need somewhere to store the
+		// encrypted file, the file is not pinned becasue it will be useless when upload file finish
+		err = this.blockstore.Put(root)
+		if err != nil {
+			log.Errorf("[NodesFromLargeFile] put root to block store error : %s", err)
+			return nil, err
+		}
+	}
+
+	err = this.PinRoot(context.TODO(), root.Cid())
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] pinroot  error : %s", err)
+		return nil, err
+	}
+
+	rootCid := root.Cid()
+	err = this.fsstore.PutFileBlockHash(root.Cid().String(), &fsstore.FileBlockHash{rootCid.String(), blockHashes})
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] PutFileBlockHash error for %s, error: %s", rootCid.String(), err)
+		return nil, err
+	}
+
+	log.Debugf("[NodesFromLargeFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
+	return blockHashes, nil
+}
+
+func (this *MaxService) PrepareHelper(fileName string, filePrefix string, encrypt bool, password string) (*helpers.DagBuilderHelper, *os.File, error) {
+	cidVer := 0
+	hashFunStr := "sha2-256"
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Errorf("[PrepareHelper]: open file %s error : %s", fileName, err)
+		return nil, nil, err
+	}
+
+	var reader io.Reader = file
+	if encrypt {
+		encryptedR, err := crypto.AESEncryptFileReader(file, password)
+		if err != nil {
+			file.Close()
+			log.Errorf("[PrepareHelper]: AESEncryptFileReader error : %s", err)
+			return nil, nil, err
+		}
+		reader = encryptedR
+	}
+	// Insert prefix to identify a file
+	stringReader := strings.NewReader(filePrefix)
+	reader = io.MultiReader(stringReader, reader)
+
+	chnk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
+	if err != nil {
+		file.Close()
+		log.Errorf("[PrepareHelper]: create chunker error : %s", err)
+		return nil, nil, err
+	}
+
+	prefix, err := merkledag.PrefixForCidVersion(cidVer)
+	if err != nil {
+		file.Close()
+		log.Errorf("[PrepareHelper]: PrefixForCidVersion error : %s", err)
+		return nil, nil, err
+	}
+
+	hashFunCode, _ := mh.Names[strings.ToLower(hashFunStr)]
+	if err != nil {
+		file.Close()
+		log.Errorf("[PrepareHelper]: get hashFunCode error : %s", err)
+		return nil, nil, err
+	}
+	prefix.MhType = hashFunCode
+	prefix.MhLength = -1
+
+	params := &helpers.DagBuilderParams{
+		RawLeaves: true,
+		Prefix:    &prefix,
+		Maxlinks:  32,
+		Maxlevel:  2,
+		NoCopy:    false,
+	}
+	db := params.New(chnk)
+
+	return db, file, nil
 }
 
 func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {

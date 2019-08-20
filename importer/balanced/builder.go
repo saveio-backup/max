@@ -67,6 +67,43 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 	return out, nil
 }
 
+func LayoutAndGetUnixFsNodes(db *h.DagBuilderHelper) (*h.UnixfsNode, []*h.UnixfsNode, error) {
+	var offset uint64
+	var root *h.UnixfsNode
+
+	list := make([]*h.UnixfsNode, 0)
+	offset = db.GetOffset()
+	for level := 0; !db.Done() && level <= db.GetMaxlevel(); level++ {
+
+		nroot := db.NewUnixfsNode()
+		db.SetPosInfo(nroot, offset)
+
+		// add our old root as a child of the new root.
+		if root != nil { // nil if it's the first node.
+			if err := nroot.AddChild(root, db); err != nil {
+				return nil, nil, err
+			}
+		}
+
+		// fill it up.
+		c, err := fillNodeRec(db, nroot, level, offset)
+		if err != nil {
+			return nil, nil, err
+		}
+		if c != nil && len(c) > 0 {
+			list = append(list, c...)
+		}
+
+		offset += nroot.FileSize()
+		root = nroot
+	}
+	if root == nil {
+		root = db.NewUnixfsNode()
+	}
+
+	return root, list, nil
+}
+
 func LayoutAndGetNodes(db *h.DagBuilderHelper) (ipld.Node, []*h.UnixfsNode, error) {
 	var offset uint64
 	var root *h.UnixfsNode

@@ -23,6 +23,8 @@ type DagBuilderHelper struct {
 	rawLeaves bool
 	nextData  []byte // the next item to return.
 	maxlinks  int
+	maxlevel  int
+	offset    uint64
 	batch     *ipld.Batch
 	fullPath  string
 	stat      os.FileInfo
@@ -34,6 +36,10 @@ type DagBuilderHelper struct {
 type DagBuilderParams struct {
 	// Maximum number of links per intermediate node
 	Maxlinks int
+
+	// Maximum number of level per 'root' node
+	// Use this and Maxlinks to control the size of single tree when handling large file
+	Maxlevel int
 
 	// RawLeaves signifies that the importer should use raw ipld nodes as leaves
 	// instead of using the unixfs TRaw type
@@ -59,6 +65,7 @@ func (dbp *DagBuilderParams) New(spl chunker.Splitter) *DagBuilderHelper {
 		rawLeaves: dbp.RawLeaves,
 		prefix:    dbp.Prefix,
 		maxlinks:  dbp.Maxlinks,
+		maxlevel:  dbp.Maxlevel,
 		batch:     ipld.NewBatch(context.TODO(), dbp.Dagserv),
 	}
 	if fi, ok := spl.Reader().(files.FileInfo); dbp.NoCopy && ok {
@@ -224,4 +231,17 @@ func (db *DagBuilderHelper) Maxlinks() int {
 // sure all data is persisted.
 func (db *DagBuilderHelper) Close() error {
 	return db.batch.Commit()
+}
+
+func (db *DagBuilderHelper) SetOffset(offset uint64) {
+	db.offset = offset
+	return
+}
+
+func (db *DagBuilderHelper) GetOffset() uint64 {
+	return db.offset
+}
+
+func (db *DagBuilderHelper) GetMaxlevel() int {
+	return db.maxlevel
 }
