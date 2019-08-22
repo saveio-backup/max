@@ -56,6 +56,7 @@ import (
 
 //var log = logging.Logger("max")
 var once sync.Once
+var Version string
 
 type FSType int
 
