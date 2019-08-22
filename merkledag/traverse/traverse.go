@@ -203,7 +203,7 @@ func bfsTraverse(root State, t *traversal) error {
 			})
 
 			if t.opts.LightLeafNode && len(node.Links()) == 0 {
-				if t.opts.ErrFunc != nil {
+				if t.opts.ReturnBuffer != nil {
 					t.opts.ReturnBuffer(node.RawData())
 				}
 			}
