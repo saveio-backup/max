@@ -29,6 +29,8 @@ type Options struct {
 	ErrFunc ErrFunc         // see ErrFunc. Optional
 
 	SkipDuplicates bool // whether to skip duplicate nodes
+	LightLeafNode bool  // return the raw data occupied by leaf node
+	ReturnBuffer ReturnBufferFunc
 }
 
 // State is a current traversal state
@@ -101,6 +103,9 @@ type Func func(current State) error
 //   opts.ErrFunc = func(err error) { return err }
 //
 type ErrFunc func(err error) error
+
+//caller provide ReturnBufferFunc to return slice to memory pool
+type ReturnBufferFunc func(buffer []byte) error
 
 // Traverse initiates a DAG traversal with the given options starting at
 // the given root.
@@ -196,6 +201,12 @@ func bfsTraverse(root State, t *traversal) error {
 				Node:  node,
 				Depth: curr.Depth + 1,
 			})
+
+			if t.opts.LightLeafNode && len(node.Links()) == 0 {
+				if t.opts.ErrFunc != nil {
+					t.opts.ReturnBuffer(node.RawData())
+				}
+			}
 		}
 	}
 	return nil

@@ -1230,6 +1230,8 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 		Order:          traverse.BFS,
 		Func:           travFunc,
 		SkipDuplicates: false,
+		LightLeafNode: true,
+		ReturnBuffer: ReturnBuffer,
 	}
 
 	err := traverse.Traverse(node, options)
