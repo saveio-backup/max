@@ -19,6 +19,7 @@ import (
 	posinfo "gx/ipfs/Qmb3jLEFAQrqdVgWUajqEyuuDoavkSq1XQXz6tWdFWF995/go-ipfs-posinfo"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 	blocks "gx/ipfs/Qmej7nf81hi2x2tvjRBF3mcp74sQyuDH4VMYDGd1YtXjb2/go-block-format"
+	mpool "gx/ipfs/QmWBug6eBS7AxRdCDVuSY5CnSit7cS2XnPFYJWqWDumhCG/go-msgio/mpool"
 )
 
 // FilestorePrefix identifies the key prefix for FileManager blocks.
@@ -214,7 +215,8 @@ func (f *FileManager) readDataObj(c *cid.Cid, d *pb.DataObj) ([]byte, error) {
 		return nil, &CorruptReferenceError{StatusFileError, err}
 	}
 
-	outbuf := make([]byte, d.GetSize_())
+	//outbuf := make([]byte, d.GetSize_())
+	outbuf := mpool.ByteSlicePool.Get(uint32(d.GetSize_())).([]byte)[:d.GetSize_()]
 	if offset == 0 {
 		buf := make([]byte, size)
 		_, err = io.ReadFull(fi, buf)

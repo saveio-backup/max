@@ -291,6 +291,11 @@ func isTooManyFDError(err error) bool {
 	return false
 }
 
+func ReturnBuffer(buffer []byte) error {
+	mpool.ByteSlicePool.Put(uint32(len(buffer)), buffer)
+	return nil
+}
+
 func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (blockHashes []string, err error) {
 	absFileName, err := filepath.Abs(fileName)
 	if err != nil {
@@ -396,7 +401,8 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 	}
 	defer file.Close()
 
-	var list = []*helpers.UnixfsNode{}
+	levels := db.GetMaxlevel() + 1
+	lists := make([][]string, levels)
 
 	nroot := db.NewUnixfsNode()
 	db.SetPosInfo(nroot, 0)
@@ -404,18 +410,20 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 	for !db.Done() {
 		log.Debugf("[NodesFromLargeFile]: db offset : %d", db.GetOffset())
 
-		subRoot, subList, err := balanced.LayoutAndGetUnixFsNodes(db)
+		subRoot := db.NewUnixfsNode()
+		subRoot.SetLevel(db.GetMaxlevel())
+		db.SetPosInfo(subRoot, db.GetOffset())
+
+		subList, err := balanced.FillNodeRec(db, subRoot, db.GetMaxlevel(), db.GetOffset())
 		if err != nil {
-			log.Errorf("[NodesFromLargeFile]: LayoutAndGetUnixFsNodes error : %s", err)
+			log.Errorf("[NodesFromLargeFile]: FillNodeRec error : %s", err)
 			return nil, err
 		}
-		log.Debugf("[NodesFromLargeFile]: finish one round LayoutAndGetUnixFsNodes tree size: %d, len(list) : %d", subRoot.FileSize(), len(subList))
+		log.Debugf("[NodesFromLargeFile]: finish one round FillNodeRec tree size: %d, len(list) : %d", subRoot.FileSize(), len(subList))
 
 		if err := nroot.AddChild(subRoot, db); err != nil {
 			return nil, err
 		}
-
-		list = append(list, subList...)
 
 		if this.IsFileStore() && !encrypt {
 			out, err := subRoot.GetDagNode()
@@ -424,15 +432,10 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 				return nil, err
 			}
 
-			cids, _, err := this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), out, subList)
+			_, _, err = this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), out, subList)
 			if err != nil {
 				log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
 				return nil, err
-			}
-
-			//compute hash based on cid
-			for _, cid := range cids {
-				blockHashes = append(blockHashes, cid.String())
 			}
 
 			for _, node := range subList {
@@ -442,8 +445,12 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 					return nil, err
 				}
 
+				lists[node.GetLevel()] = append(lists[node.GetLevel()], dagNode.Cid().String())
+
 				// return memory to mpool!
-				mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+				if len(dagNode.Links()) == 0 {
+					mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+				}
 			}
 		} else {
 			for _, node := range subList {
@@ -460,10 +467,12 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 				}
 
 				//compute hash based on cid
-				blockHashes = append(blockHashes, dagNode.Cid().String())
+				lists[node.GetLevel()] = append(lists[node.GetLevel()], dagNode.Cid().String())
 
 				// return memory to mpool!
-				mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+				if len(dagNode.Links()) == 0 {
+					mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+				}
 			}
 		}
 
@@ -477,8 +486,12 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 		return nil, err
 	}
 
-	hashes := append([]string{}, root.Cid().String())
-	blockHashes = append(hashes, blockHashes...)
+	// construct block hashes from top level to bottom level
+	blockHashes = append(blockHashes, root.Cid().String())
+	for i := levels-1; i >= 0; i-- {
+		blockHashes = append(blockHashes, lists[i]...)
+	}
+
 	log.Debugf("[NodesFromLargeFile]: return %d blockHashes", len(blockHashes))
 
 	if this.IsFileStore() && !encrypt {

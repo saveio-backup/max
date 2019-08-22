@@ -40,6 +40,7 @@ var ErrSizeLimitExceeded = fmt.Errorf("object size limit exceeded")
 // UnixfsNode is a struct created to aid in the generation
 // of unixfs DAG trees
 type UnixfsNode struct {
+	level   int
 	raw     bool
 	rawnode *dag.RawNode
 	node    *dag.ProtoNode
@@ -58,6 +59,14 @@ func NewUnixfsNodeFromDag(nd *dag.ProtoNode) (*UnixfsNode, error) {
 		node: nd,
 		ufmt: mb,
 	}, nil
+}
+
+func (n *UnixfsNode) SetLevel(level int) {
+	n.level = level
+}
+
+func (n *UnixfsNode) GetLevel() int {
+	return n.level
 }
 
 // SetPrefix sets the CID Prefix

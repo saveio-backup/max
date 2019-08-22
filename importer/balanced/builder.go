@@ -68,11 +68,12 @@ func Layout(db *h.DagBuilderHelper) (ipld.Node, error) {
 }
 
 func LayoutAndGetUnixFsNodes(db *h.DagBuilderHelper) (*h.UnixfsNode, []*h.UnixfsNode, error) {
-	var offset uint64
+	var offset, origOffset uint64
 	var root *h.UnixfsNode
 
 	list := make([]*h.UnixfsNode, 0)
-	offset = db.GetOffset()
+	origOffset = db.GetOffset()
+	offset = origOffset
 	for level := 0; !db.Done() && level <= db.GetMaxlevel(); level++ {
 
 		nroot := db.NewUnixfsNode()
@@ -94,7 +95,7 @@ func LayoutAndGetUnixFsNodes(db *h.DagBuilderHelper) (*h.UnixfsNode, []*h.Unixfs
 			list = append(list, c...)
 		}
 
-		offset += nroot.FileSize()
+		offset = origOffset + nroot.FileSize()
 		root = nroot
 	}
 	if root == nil {
@@ -144,6 +145,9 @@ func LayoutAndGetNodes(db *h.DagBuilderHelper) (ipld.Node, []*h.UnixfsNode, erro
 	return out, list, nil
 }
 
+func FillNodeRec(db *h.DagBuilderHelper, node *h.UnixfsNode, depth int, offset uint64) ([]*h.UnixfsNode, error) {
+	return fillNodeRec(db, node, depth, offset)
+}
 // fillNodeRec will fill the given node with data from the dagBuilders input
 // source down to an indirection depth as specified by 'depth'
 // it returns the total dataSize of the node, and a potential error
@@ -169,6 +173,7 @@ func fillNodeRec(db *h.DagBuilderHelper, node *h.UnixfsNode, depth int, offset u
 	// while we have room AND we're not done
 	for node.NumChildren() < db.Maxlinks() && !db.Done() {
 		child := db.NewUnixfsNode()
+		child.SetLevel(depth-1)
 		db.SetPosInfo(child, offset)
 
 		c, err := fillNodeRec(db, child, depth-1, offset)
