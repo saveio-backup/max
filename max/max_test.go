@@ -19,6 +19,7 @@ import (
 
 	"github.com/saveio/max/max/fsstore"
 	ml "github.com/saveio/max/merkledag"
+	"github.com/saveio/max/merkledag/traverse"
 	sdk "github.com/saveio/themis-go-sdk"
 )
 
@@ -54,6 +55,39 @@ func makeFile(path string, data []byte) error {
 	_, err = f.Write(data)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+const BUF_SIZE = 100 * 1024 * 1024
+
+// make a file with given path and random content
+func makeFileWithLen(path string, length uint64) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0766)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var buf [BUF_SIZE]byte
+
+	loop := length / BUF_SIZE
+	remaining := length % BUF_SIZE
+
+	for i := 0; i < int(loop); i++ {
+		rand.Read(buf[:])
+		_, err = f.WriteAt(buf[:], int64(i*BUF_SIZE))
+		if err != nil {
+			return err
+		}
+	}
+
+	if remaining != 0 {
+		rand.Read(buf[:remaining])
+		_, err = f.WriteAt(buf[:remaining], int64(loop*BUF_SIZE))
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -496,6 +530,76 @@ func TestNodesFromFileNormal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// test memory consumption for calling nodesFromFile and traverse merkle dag
+func TestNodesFromFileLarge(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	filePath := testdir + "/largefile"
+	fileSize := 1024 * 1024 * 1024 //1G
+	err = makeFileWithLen(filePath, uint64(fileSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileCfg := &FileConfig{filePath, false, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootCid, err := cid.Decode(hashes[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cids, err := getFileAllCidsNoCache(max, context.TODO(), rootCid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hashes) != len(cids) {
+		t.Fatalf("length no match")
+	}
+
+	for index, cid := range cids {
+		if cid.String() != hashes[index] {
+			t.Fatalf("blockHash no match for index %d\n", index)
+		}
+	}
+}
+
+// same with max.GetFileAllCids but dont use the cached result in DB
+func getFileAllCidsNoCache(max *MaxService, ctx context.Context, rootCid *cid.Cid) ([]*cid.Cid, error) {
+	var cids []*cid.Cid
+
+	dagNode, err := max.checkRootForGetCid(rootCid)
+	if err != nil {
+		return nil, err
+	}
+
+	if dagNode == nil {
+		cids = append(cids, rootCid)
+		return cids, nil
+	}
+
+	getCid := func(state traverse.State) error {
+		cids = append(cids, state.Node.Cid())
+		return nil
+	}
+
+	err = max.traverseMerkelDag(dagNode, getCid)
+	if err != nil {
+		return nil, err
+	}
+	return cids, nil
 }
 
 func TestNodeFromFileNotExist(t *testing.T) {
