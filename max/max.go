@@ -1368,10 +1368,10 @@ func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinne
 	return nil
 }
 
-func DecryptFile(file string, password string, outPath string) error {
-	return crypto.AESDecryptFile(file, password, outPath)
+func DecryptFile(file, prefix, password, outPath string) error {
+	return crypto.AESDecryptFile(file, prefix, password, outPath)
 }
 
-func EncryptFile(file string, password string, outPath string) error {
+func EncryptFile(file, password, outPath string) error {
 	return crypto.AESEncryptFile(file, password, outPath)
 }

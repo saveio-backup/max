@@ -51,7 +51,8 @@ func randomBytes(length int) ([]byte, error) {
 	return b, nil
 }
 
-// AESEncryptFile encrypt file and save file locally
+// AESEncryptFile encrypt file and save file locally.
+// The file include first 32 bytes of salt data, and the remains are encrypted data
 func AESEncryptFile(file string, password string, out string) error {
 	salt, err := randomBytes(16)
 	if err != nil {
@@ -94,8 +95,8 @@ func AESEncryptFile(file string, password string, out string) error {
 	for _, v := range encAlg {
 		tag = append(tag, v)
 	}
-	outFile.Write(tag)
-	return nil
+	_, err = outFile.WriteAt(tag, 0)
+	return err
 }
 
 func AESEncryptFileReader(inFile *os.File, password string) (io.Reader, error) {
@@ -126,20 +127,23 @@ func AESEncryptFileReader(inFile *os.File, password string) (io.Reader, error) {
 	for _, v := range encAlg {
 		tag = append(tag, v)
 	}
-	r := io.MultiReader(reader, bytes.NewReader(tag))
+	r := io.MultiReader(bytes.NewReader(tag), reader)
 	return r, nil
 }
 
-func AESDecryptFile(file string, password string, out string) error {
+// AESDecryptFile. use AES algorithm to decrypt a file
+// The file is include first 32 bytes of salt data, the prefix data if exists, and remains are encrypted data
+func AESDecryptFile(file, prefix, password, out string) error {
 	inFile, err := os.Open(file)
 	if err != nil {
 		return err
 	}
 	defer inFile.Close()
 	extData := make([]byte, 32)
-	fileSize, _ := inFile.Stat()
-	inFile.ReadAt(extData, fileSize.Size()-32)
-	err = os.Truncate(file, fileSize.Size()-32)
+	// read salt data after skip first N bytes of prefix
+	inFile.ReadAt(extData, int64(len(prefix)))
+	// skip extra data and prefix data from the begining
+	_, err = inFile.Seek(int64(len(extData)+len(prefix)), io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -175,9 +179,8 @@ func AESDecryptFile(file string, password string, out string) error {
 
 func AESDecrptyFileWriter(inFile *os.File, password string) (io.Writer, error) {
 	extData := make([]byte, 32)
-	fileSize, _ := inFile.Stat()
-	inFile.ReadAt(extData, fileSize.Size()-32)
-	err := os.Truncate(inFile.Name(), fileSize.Size()-32)
+	inFile.ReadAt(extData, 0)
+	_, err := inFile.Seek(int64(len(extData)), io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +193,7 @@ func AESDecrptyFileWriter(inFile *os.File, password string) (io.Writer, error) {
 	eKey := dKey[len(dKey)-16:]
 	encAlg := extData[31]
 	if encAlg != byte(AES) {
-		return nil, errors.New("unkown algorithm")
+		return nil, errors.New("unknown algorithm")
 	}
 	block, err := aes.NewCipher(eKey)
 	if err != nil {
