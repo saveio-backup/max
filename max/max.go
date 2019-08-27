@@ -795,7 +795,7 @@ func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error
 		return errors.New("saveFilePrefix can be only called on filestore")
 	}
 
-	prefix := fsstore.NewFilePrefix(fileName, filePrefix)
+	prefix := fsstore.NewFilePrefix(fileName, []byte(filePrefix))
 
 	err := this.fsstore.PutFilePrefix(fileName, prefix)
 	if err != nil {
@@ -826,7 +826,7 @@ func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 	pathToPrefix := make(map[string]string)
 
 	for _, prefix := range prefixes {
-		pathToPrefix[prefix.Path] = prefix.Prefix
+		pathToPrefix[prefix.Path] = string(prefix.Prefix)
 	}
 
 	log.Debugf("[getFilePrefixes] pathToPrefix : %v", pathToPrefix)

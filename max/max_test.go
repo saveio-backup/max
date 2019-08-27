@@ -2195,3 +2195,45 @@ func TestDeleteProveTask(t *testing.T) {
 		}
 	}
 }
+
+func TestGetFilePrefix(t *testing.T) {
+
+	testdir, err := ioutil.TempDir("", "filestore-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf [100]byte
+
+	fileName := RandStringBytes(20)
+	_, err = rand.Read(buf[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix := string(buf[:])
+	fmt.Printf("fileName : %v, prefix : %v, len %d\n", fileName, prefix, len(prefix))
+
+	err = max.SetFilePrefix(fileName, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefixes, err := max.getFilePrefixes()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix2 := prefixes[fileName]
+
+	fmt.Printf("prefix2 : %s, len : %d\n", prefix2, len(prefix2))
+
+	if prefix != prefix2 {
+		t.Fatal("prefix no match")
+	}
+}
