@@ -15,10 +15,10 @@ import (
 
 	humanize "gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
 	tar "gx/ipfs/QmQine7gvHncNevKtG9QXxf3nXcwSj6aDDmMm52mHofEEp/tar-utils"
+	mpool "gx/ipfs/QmWBug6eBS7AxRdCDVuSY5CnSit7cS2XnPFYJWqWDumhCG/go-msgio/mpool"
 	chunker "gx/ipfs/QmWo8jYc19ppG7YoTsrr2kEtLRbARTJho5oNXFTR6B7Peq/go-ipfs-chunker"
 	retry "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/retrystore"
 	dssync "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/sync"
-	mpool "gx/ipfs/QmWBug6eBS7AxRdCDVuSY5CnSit7cS2XnPFYJWqWDumhCG/go-msgio/mpool"
 	mh "gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
 	bstore "gx/ipfs/QmaG4DZ4JaqEfvPWt5nPPgoTzhc1tr1T3f4Nu9Jpdm8ymY/go-ipfs-blockstore"
 	posinfo "gx/ipfs/Qmb3jLEFAQrqdVgWUajqEyuuDoavkSq1XQXz6tWdFWF995/go-ipfs-posinfo"
@@ -489,7 +489,7 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 
 	// construct block hashes from top level to bottom level
 	blockHashes = append(blockHashes, root.Cid().String())
-	for i := levels-1; i >= 0; i-- {
+	for i := levels - 1; i >= 0; i-- {
 		blockHashes = append(blockHashes, lists[i]...)
 	}
 
@@ -743,6 +743,7 @@ func (this *MaxService) buildFileStoreForFileOffset(fileName, filePrefix string,
 }
 
 func (this *MaxService) PutBlock(block blocks.Block) error {
+	log.Debugf("[PutBlock] put block %s", block.String())
 	err := this.blockstore.Put(block)
 	if err != nil {
 		log.Errorf("[PutBlock] put error : %s", err)
@@ -752,6 +753,7 @@ func (this *MaxService) PutBlock(block blocks.Block) error {
 }
 
 func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
+	log.Debugf("[GetBlock] get block %s", cid.String())
 	block, err := this.blockstore.Get(cid)
 	if err != nil {
 		log.Errorf("[GetBlock] get error : %s", err)
@@ -800,6 +802,7 @@ func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error
 		log.Errorf("[saveFilePrefix] PutFilePrefix error : %s", err)
 	}
 
+	log.Debugf("[saveFilePrefix] fileName: %s, filePrefix : %s", fileName, filePrefix)
 	return nil
 }
 
@@ -949,6 +952,7 @@ func (this *MaxService) getTagIndexes(blockHash, fileHash string) ([]uint64, err
 
 // delete file according to fileHash, only applicable for the FS node
 func (this *MaxService) DeleteFile(fileHash string) error {
+	log.Debugf("[DeleteFile] delete file %s", fileHash)
 	_, err := cid.Decode(fileHash)
 	if err != nil {
 		log.Errorf("[DeleteFile] failed to decode fileHash %s, error : %s", fileHash, err)
@@ -1097,6 +1101,7 @@ func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, p
 
 // TODO: GC is expensive, so should not call immediately but periordly
 func (this *MaxService) gc() <-chan gc.Result {
+	log.Debugf("[gc] gc is called")
 	return gc.GC(context.TODO(), this.blockstore.(bstore.GCBlockstore), this.datastore, this.pinner, nil)
 }
 
@@ -1125,6 +1130,8 @@ func (this *MaxService) unpinRoot(ctx context.Context, rootCid *cid.Cid) error {
 	if err != nil {
 		log.Errorf("[unpinRoot] flush error : %s", err)
 	}
+
+	log.Debugf("[unpinRoot] unpin root for %s", rootCid.String())
 	return nil
 }
 
@@ -1231,8 +1238,8 @@ func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func
 		Order:          traverse.BFS,
 		Func:           travFunc,
 		SkipDuplicates: false,
-		LightLeafNode: true,
-		ReturnBuffer: ReturnBuffer,
+		LightLeafNode:  true,
+		ReturnBuffer:   ReturnBuffer,
 	}
 
 	err := traverse.Traverse(node, options)

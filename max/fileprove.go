@@ -128,14 +128,19 @@ func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string) 
 }
 
 func (this *MaxService) deleteProveTask(fileHash string) error {
-	this.provetasks.Delete(fileHash)
+	log.Debugf("[deleteProveTask] delete task for fileHash : %s", fileHash)
 
-	err := this.fsstore.DeleteProveParam(fileHash)
-	if err != nil {
-		log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
-		return err
+	if _, ok := this.provetasks.Load(fileHash); ok {
+		this.provetasks.Delete(fileHash)
+
+		err := this.fsstore.DeleteProveParam(fileHash)
+		if err != nil {
+			log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
+			return err
+		}
+	} else {
+		log.Debugf("[deleteProveTask] task has already been deleted")
 	}
-
 	return nil
 }
 
@@ -343,6 +348,7 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 	var attrKey string
 	var attr *fsstore.BlockAttr
 
+	log.Debugf("[internalProveFile] challenges : %v", challenges)
 	cidsLen := uint64(len(cids))
 	for _, c := range challenges {
 		index = uint64(c.Index - 1)
@@ -373,7 +379,7 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 		log.Errorf("[internalProveFile] proveFileStore for fileHash %s error : %s", fileHash, err)
 		return false, err
 	}
-	log.Debugf("[internalProveFile] prove succsess for fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
+	log.Debugf("[internalProveFile] prove success for fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
 		fileHash, blockNum, proveBlockNum, fileProveParam, hash.ToHexString(), height, luckyNum, bakHeight, bakNum, badNodeWalletAddr.ToBase58())
 	return true, nil
 }

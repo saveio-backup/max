@@ -2158,6 +2158,8 @@ func TestDeleteProveTask(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		max.provetasks.Store(fileHash, struct{}{})
+
 		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr}
 	}
 

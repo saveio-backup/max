@@ -10,13 +10,11 @@ import (
 	mfs "github.com/saveio/max/mfs"
 	gc "github.com/saveio/max/pin/gc"
 	repo "github.com/saveio/max/repo"
+	"github.com/saveio/themis/common/log"
 
 	humanize "gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
-	logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 )
-
-var log = logging.Logger("corerepo")
 
 var ErrMaxStorageExceeded = errors.New("maximum storage limit exceeded. Try to unpin some files")
 
@@ -47,6 +45,8 @@ func NewGC(n *core.IpfsNode) (*GC, error) {
 		r.SetConfigKey("Datastore.StorageGCWatermark", 90)
 		cfg.Datastore.StorageGCWatermark = 90
 	}
+
+	log.Debugf("[NewGC] storage max : %s, water mark : %d", cfg.Datastore.StorageMax, cfg.Datastore.StorageGCWatermark)
 
 	storageMax, err := humanize.ParseBytes(cfg.Datastore.StorageMax)
 	if err != nil {
@@ -92,7 +92,12 @@ func GarbageCollect(n *core.IpfsNode, ctx context.Context) error {
 
 	// no fileroot concept in max
 	rmed := gc.GC(ctx, n.Blockstore, n.Repo.Datastore(), n.Pinning, nil)
-	return CollectResult(ctx, rmed, nil)
+	//return CollectResult(ctx, rmed, nil)
+	return CollectResult(ctx, rmed, logRemovedBlock)
+}
+
+func logRemovedBlock(cid *cid.Cid) {
+	log.Debugf("[RemovedByGC] remove block %s", cid.String())
 }
 
 // CollectResult collects the output of a garbage collection run and calls the
@@ -171,6 +176,7 @@ func PeriodicGC(ctx context.Context, node *core.IpfsNode) error {
 		cfg.Datastore.GCPeriod = "1h"
 	}
 
+	log.Debugf("[PeriodicGC] gc period %s", cfg.Datastore.GCPeriod)
 	period, err := time.ParseDuration(cfg.Datastore.GCPeriod)
 	if err != nil {
 		return err
@@ -190,6 +196,7 @@ func PeriodicGC(ctx context.Context, node *core.IpfsNode) error {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(period):
+			log.Debugf("[PeriodicGC] timer fired for gc")
 			// the private func maybeGC doesn't compute storageMax, storageGC, slackGC so that they are not re-computed for every cycle
 			if err := gc.maybeGC(ctx, 0); err != nil {
 				log.Error(err)
@@ -209,22 +216,26 @@ func ConditionalGC(ctx context.Context, node *core.IpfsNode, offset uint64) erro
 func (gc *GC) maybeGC(ctx context.Context, offset uint64) error {
 	storage, err := gc.Repo.GetStorageUsage()
 	if err != nil {
+		log.Debugf("[maybeGC], get storage usage err : %s", err)
 		return err
 	}
 
+	log.Debugf("[maybeGC] storage : %d, storage gc : %d, offset : %d", storage, gc.StorageGC, offset)
+
 	if storage+offset > gc.StorageGC {
 		if storage+offset > gc.StorageMax {
-			log.Warningf("pre-GC: %s", ErrMaxStorageExceeded)
+			log.Warnf("[maybeGC] pre-GC: %s", ErrMaxStorageExceeded)
 		}
 
 		// Do GC here
-		log.Info("Watermark exceeded. Starting repo GC...")
-		defer log.EventBegin(ctx, "repoGC").Done()
+		log.Info("[maybeGC]Watermark exceeded. Starting repo GC...")
+		//defer log.EventBegin(ctx, "repoGC").Done()
 
 		if err := GarbageCollect(gc.Node, ctx); err != nil {
 			return err
 		}
-		log.Infof("Repo GC done. See `ipfs repo stat` to see how much space got freed.\n")
+		//log.Infof("Repo GC done. See `ipfs repo stat` to see how much space got freed.\n")
+		log.Infof("[maybeGC] Repo GC done.")
 	}
 	return nil
 }
