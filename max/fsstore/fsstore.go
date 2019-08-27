@@ -52,6 +52,11 @@ type FilePrefix struct {
 	Prefix []byte `json:"prefix"`
 }
 
+type FilePrefixOld struct {
+	Path   string `json:"path"`
+	Prefix string `json:"prefix"`
+}
+
 func NewFilePrefix(path string, prefix []byte) *FilePrefix {
 	return &FilePrefix{
 		Path:   path,
@@ -64,6 +69,13 @@ func (p *FilePrefix) Serialization() ([]byte, error) {
 }
 
 func (p *FilePrefix) Deserialization(raw []byte) error {
+	return json.Unmarshal(raw, p)
+}
+func (p *FilePrefixOld) Serialization() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p *FilePrefixOld) Deserialization(raw []byte) error {
 	return json.Unmarshal(raw, p)
 }
 
@@ -208,7 +220,15 @@ func (fss *FsStore) GetFilePrefixes() ([]*FilePrefix, error) {
 		p := &FilePrefix{}
 		err = p.Deserialization(entry.Value.([]byte))
 		if err != nil {
-			return nil, errors.New("the retrieved value is not a fileprefixes")
+			// try if old format, code should be removed when all nodes update to new version
+			old := &FilePrefixOld{}
+			err = old.Deserialization(entry.Value.([]byte))
+			if err != nil {
+				return nil, errors.New("the retrieved value is not a fileprefixes")
+			}
+
+			p.Path = old.Path
+			p.Prefix = []byte(old.Prefix)
 		}
 
 		filePrefixes = append(filePrefixes, p)
