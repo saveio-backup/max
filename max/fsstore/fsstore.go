@@ -49,10 +49,10 @@ func (p *BlockAttr) Deserialization(raw []byte) error {
 
 type FilePrefix struct {
 	Path   string `json:"path"`
-	Prefix []byte `json:"prefix"`
+	Prefix string `json:"prefix"`
 }
 
-func NewFilePrefix(path string, prefix []byte) *FilePrefix {
+func NewFilePrefix(path, prefix string) *FilePrefix {
 	return &FilePrefix{
 		Path:   path,
 		Prefix: prefix,
