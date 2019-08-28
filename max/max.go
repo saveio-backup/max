@@ -1323,6 +1323,26 @@ func (this *MaxService) StopFileProve() {
 	log.Debugf("[StopFileProve] stop prove task")
 }
 
+func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string) error {
+	_, err := cid.Decode(fileHash)
+	if err != nil {
+		log.Errorf("[SetFileBlockHashes] failed to decode fileHash %s, error : %s", fileHash, err)
+		return err
+	}
+
+	if len(blockHashes) == 0 || fileHash != blockHashes[0] {
+		log.Errorf("[SetFileBlockHashes] invalid block hashes for fileHash %s", fileHash)
+		return errors.New("SetFileBlockHashes invalid block hashes")
+	}
+
+	err = this.fsstore.PutFileBlockHash(fileHash, &fsstore.FileBlockHash{fileHash, blockHashes})
+	if err != nil {
+		log.Errorf("[SetFileBlockHashes] PutFileBlockHash error for %s, error: %s", fileHash, err)
+		return err
+	}
+	return nil
+}
+
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
 	if _, ok := blockstore.(bstore.GCBlockstore); !ok {
 		log.Errorf("[startPeriodicGC] wrong blockstore type, cannot run GC")
