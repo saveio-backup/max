@@ -1297,6 +1297,51 @@ func TestPeriodicGC(t *testing.T) {
 	}
 }
 
+// test pinned file will not be deleted on restart
+func TestPeriodicGCOnRestart(t *testing.T) {
+	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_TEST, nil, "26M"}
+	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+
+	result, err := addFileAndCheckFileContent(nil, initCfg, fileCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max := result.max
+	list := result.list
+
+	cids, err := getCidsFromNodelist(list)
+
+	err = max.repo.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	max2, err := NewMaxService(&FSConfig{result.repoRoot, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD_TEST, "26M"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max2, cids, result.buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	duration, err := time.ParseDuration(GC_PERIOD_TEST)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make sure gc is scheduled
+	time.Sleep(2 * duration)
+
+	// gc scheduled not clear the pinned file
+	err = checkFileContent(max2, cids, result.buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestShareBlocksDeleteFile(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
 	if err != nil {

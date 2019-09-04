@@ -236,7 +236,12 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	offlineexch := offline.Exchange(blockstore)
 	bserv := blockservice.New(blockstore, offlineexch)
 	dag := merkledag.NewDAGService(bserv)
-	pinner = pin.NewPinner(rds, dag, dag)
+
+	pinner, err = pin.LoadPinner(rds, dag, dag)
+	if err != nil {
+		log.Debugf("Load Pinnder error : %s, create new one", err)
+		pinner = pin.NewPinner(rds, dag, dag)
+	}
 
 	service := &MaxService{
 		blockstore:  blockstore,
