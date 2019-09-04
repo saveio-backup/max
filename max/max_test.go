@@ -2000,7 +2000,7 @@ func TestFileEncDecWithBadPassWord(t *testing.T) {
 }
 
 func decryptFileAndCheckContent(file string, password string, outPath string, buf []byte) (bool, error) {
-	err := DecryptFile(file, password, outPath)
+	err := DecryptFile(file, "", password, outPath)
 	if err != nil {
 		return false, err
 	}

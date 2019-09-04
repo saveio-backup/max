@@ -82,10 +82,6 @@ func AESEncryptFile(file string, password string, out string) error {
 	}
 	defer outFile.Close()
 
-	writer := &cipher.StreamWriter{S: stream, W: outFile}
-	if _, err := io.Copy(writer, inFile); err != nil {
-		return err
-	}
 	tag := []byte{}
 	for _, v := range salt {
 		tag = append(tag, v)
@@ -96,6 +92,11 @@ func AESEncryptFile(file string, password string, out string) error {
 		tag = append(tag, v)
 	}
 	_, err = outFile.WriteAt(tag, 0)
+
+	writer := &cipher.StreamWriter{S: stream, W: outFile}
+	if _, err := io.Copy(writer, inFile); err != nil {
+		return err
+	}
 	return err
 }
 
