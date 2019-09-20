@@ -82,22 +82,13 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		}
 	}
 
-	// save prove task only when first prove success
-	if !this.loadingtasks {
-		// store the task to db
-		err = this.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
-		if err != nil {
-			log.Errorf("[StartPDPVerify] saveProveTask for filehash: %s error : %s", fileHash, err)
-			return err
-		}
-	}
 	this.provetasks.Store(fileHash, struct{}{})
 
 	return nil
 }
 
-func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
-	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr))
+func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address, firstProveHeight uint64) error {
+	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, firstProveHeight))
 	if err != nil {
 		log.Errorf("[saveProveTask] PutProveParam error: %v, for fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
 			err, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
@@ -113,6 +104,15 @@ func (this *MaxService) getProveTasks() ([]*fsstore.ProveParam, error) {
 		return nil, err
 	}
 	return params, nil
+}
+
+func (this *MaxService) getProveTask(fileHash string) (*fsstore.ProveParam, error) {
+	param, err := this.fsstore.GetProveParam(fileHash)
+	if err != nil {
+		log.Errorf("[getProveTask] error : %s", err)
+		return nil, err
+	}
+	return param, nil
 }
 
 func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string) {
@@ -203,6 +203,17 @@ func (this *MaxService) proveFileService() {
 	}
 }
 
+func (this *MaxService) deleteAndNotify(fileHash string, reason string) error {
+	err := this.DeleteFile(fileHash)
+	if err != nil {
+		log.Errorf("[deleteAndNotify] DeleteFile for fileHash %s error : %s", fileHash, err)
+		return err
+	}
+	this.notifyProveTaskDeletion(fileHash, reason)
+	log.Debugf("[deleteAndNotify] success for %s, reason : %s", fileHash, reason)
+	return nil
+}
+
 func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
 	log.Debugf("[proveFile] first: %v, fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWallet : %s",
 		first, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
@@ -215,16 +226,20 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		// prove task should be deleted when fileInfo is deleted
 		if strings.Contains(err.Error(), "FsGetFileInfo not found!") {
 			log.Debugf("[proveFile] GetFileInfo for fileHash : %s, fileInfo is deleted, remove prove task", fileHash)
-			err = this.DeleteFile(fileHash)
-			if err != nil {
-				log.Errorf("[proveFile] DeleteFile for fileHash %s error : %s", fileHash, err)
-				return err
-			}
-			log.Debugf("[proveFile] file info deleted, remove file prove for %s", fileHash)
-			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
+			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
 			return nil
 		}
 		return err
+	}
+
+	param, err := this.getProveTask(fileHash)
+	if err == nil && param != nil {
+		if param.FirstProveHeight != 0 && fileInfo.BlockHeight > param.FirstProveHeight {
+			log.Debugf("[proveFile] fileInfo is renewed for %s, blockheight %d larger than first prove height %d ,remove prove task",
+				fileHash, fileInfo.BlockHeight, param.FirstProveHeight)
+			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_FILE_RENEWED)
+			return nil
+		}
 	}
 
 	height, err := fsContract.Client.GetCurrentBlockHeight()
@@ -268,13 +283,8 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 
 		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
 		if times == fileInfo.ProveTimes+1 {
-			err = this.DeleteFile(fileHash)
-			if err != nil {
-				log.Errorf("[proveFile] DeleteFile for fileHash %s error : %s", fileHash, err)
-				return err
-			}
 			log.Debugf("[proveFile] finish file prove for %s", fileHash)
-			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
+			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
 			return nil
 		}
 
@@ -284,13 +294,8 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
 			break
 		case EXPIRE_AFTER_MAX:
-			err = this.DeleteFile(fileHash)
-			if err != nil {
-				log.Errorf("[proveFile] DeleteFile for fileHash %s after prove task expire error : %s", fileHash, err)
-				return err
-			}
 			log.Warnf("[proveFile] delete file and prove task for fileHash %s after prove task expire", fileHash)
-			this.notifyProveTaskDeletion(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
+			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
 			return nil
 
 		case EXPIRE_BEFORE_MIN:
@@ -308,15 +313,16 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		return err
 	}
 
-	// for backup node, after first prove, following prove parmeter should use default value
-	if brokenWalletAddr != common.ADDRESS_EMPTY {
-		err = this.saveProveTask(fileHash, 0, 0, 0, common.ADDRESS_EMPTY)
+	if first {
+		// saves the first prove height to check if fileinfo is deleted then added agian
+		err = this.saveProveTask(fileHash, 0, 0, 0, common.ADDRESS_EMPTY, uint64(height))
 		if err != nil {
 			log.Errorf("[proveFile] saveProveTask for fileHash %s error : %s", fileHash, err)
 			return err
 		}
-		log.Debugf("[proveFile] save prove task with updated parameter for backup node after first prove")
+		log.Debugf("[proveFile] save prove task for filehash %s with first prove height %d after first prove", fileHash, height)
 	}
+
 	return nil
 }
 

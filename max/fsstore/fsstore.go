@@ -72,15 +72,17 @@ type ProveParam struct {
 	LuckyNum         uint64         `json:"luckynum"`
 	BakHeight        uint64         `json:"bakheight"`
 	BakNum           uint64         `json:"baknum"`
+	FirstProveHeight uint64         `json:firstproveheight`
 	BrokenWalletAddr common.Address `json:"brokenwalletaddr"`
 }
 
-func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) *ProveParam {
+func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address, firstProveHeight uint64) *ProveParam {
 	return &ProveParam{
 		FileHash:         fileHashStr,
 		LuckyNum:         luckyNum,
 		BakHeight:        bakHeight,
 		BakNum:           bakNum,
+		FirstProveHeight: firstProveHeight,
 		BrokenWalletAddr: brokenWalletAddr,
 	}
 }
@@ -257,6 +259,22 @@ func (fss *FsStore) GetProveParams() ([]*ProveParam, error) {
 	}
 
 	return params, nil
+}
+
+func (fss *FsStore) GetProveParam(key string) (*ProveParam, error) {
+	if len(key) == 0 {
+		return nil, errors.New("proveparam: key is nil")
+	}
+	bdata, err := fss.db.Get(genProveParamKey(key))
+	if err != nil {
+		return nil, err
+	}
+	p := &ProveParam{}
+	err = p.Deserialization(bdata)
+	if err != nil {
+		return nil, errors.New("the retrieved value is not a proveparam")
+	}
+	return p, nil
 }
 
 func (fss *FsStore) PutProveParam(key string, p *ProveParam) error {
