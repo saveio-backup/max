@@ -291,23 +291,31 @@ func (f *FileManager) putTo(b *posinfo.FilestoreNode, to putter) error {
 		return fmt.Errorf("get data objects error : %s", err)
 	}
 
-	for _, d := range dobjs {
-		// path exist, no need to store
+
+	match := false
+	for i := 0; i < len(dobjs); i++ {
+		d := dobjs[i]
+		// update the offset for the in case path is the same
 		if filepath.ToSlash(abspath) == filepath.ToSlash(d.GetFilePath()) {
-			return nil
+			d.Offset = b.PosInfo.Offset
+			match = true
+			break
 		}
 	}
-
-	dobj.FilePath = filepath.ToSlash(abspath)
-	dobj.Offset = b.PosInfo.Offset
-	dobj.Size_ = uint64(len(b.RawData()))
 
 	var objs []*pb.DataObj
 
 	if dobjs != nil {
 		objs = append(objs, dobjs[:]...)
 	}
-	objs = append(objs, &dobj)
+
+	if !match {
+		// save the file info in the datasotre
+		dobj.FilePath = filepath.ToSlash(abspath)
+		dobj.Offset = b.PosInfo.Offset
+		dobj.Size_ = uint64(len(b.RawData()))
+		objs = append(objs, &dobj)
+	}
 
 	data, err := proto.Marshal(&pb.DataObjs{objs})
 	if err != nil {
