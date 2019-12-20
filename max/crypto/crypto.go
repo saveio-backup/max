@@ -76,7 +76,7 @@ func AESEncryptFile(file string, password string, out string) error {
 		return err
 	}
 	stream := cipher.NewOFB(block, nonce)
-	outFile, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	outFile, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		return err
 	}

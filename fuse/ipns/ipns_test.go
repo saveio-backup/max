@@ -298,7 +298,7 @@ func TestAppendFile(t *testing.T) {
 	fname := mnt.Dir + "/local/file"
 	data := writeFile(t, 1300, fname)
 
-	fi, err := os.OpenFile(fname, os.O_RDWR|os.O_APPEND, 0666)
+	fi, err := os.OpenFile(fname, os.O_RDWR, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
