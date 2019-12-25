@@ -1200,21 +1200,21 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 
 // return the cids and corresponding file offset with the provided rootcid,
 // NOTE: root cid will not be returned if it is not a leaf node with data
-func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *cid.Cid) ([]*cid.Cid, []uint64, error) {
-	var cids []*cid.Cid
-	var offsets []uint64
+func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *cid.Cid) (cids []*cid.Cid, offsets []uint64, indexes []uint64, err error) {
 	var offset uint64
+	var index uint64
 
 	dagNode, err := this.checkRootForGetCid(rootCid)
 	if err != nil {
 		log.Errorf("[GetFileAllCidsWithOffset] checkRootForGetCid error : %s", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if dagNode == nil {
 		cids = append(cids, rootCid)
 		offsets = append(offsets, 0)
-		return cids, offsets, nil
+		indexes = append(indexes, 0)
+		return cids, offsets, indexes, nil
 	}
 
 	getCid := func(state traverse.State) error {
@@ -1223,18 +1223,20 @@ func (this *MaxService) GetFileAllCidsWithOffset(ctx context.Context, rootCid *c
 			cids = append(cids, state.Node.Cid())
 			offsets = append(offsets, offset)
 			offset += this.config.ChunkSize
+			indexes = append(indexes, index)
 		}
+		index++
 		return nil
 	}
 
 	err = this.traverseMerkelDag(dagNode, getCid)
 	if err != nil {
 		log.Errorf("[GetFileAllCidsWithOffset] traverseMerkelDag error : %s", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	log.Debugf("[GetFileAllCidsWithOffset] success for cid: %s", rootCid.String())
-	return cids, offsets, nil
+	return cids, offsets, indexes, nil
 }
 
 func (this *MaxService) traverseMerkelDag(node ipld.Node, travFunc traverse.Func) error {
