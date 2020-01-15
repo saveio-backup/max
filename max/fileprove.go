@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -361,8 +360,7 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 
 	var blockCid *cid.Cid
 	var index uint64
-	var attrKey string
-	var attr *fsstore.BlockAttr
+	var tag []byte
 
 	log.Debugf("[internalProveFile] challenges : %v", challenges)
 	cidsLen := uint64(len(cids))
@@ -374,14 +372,13 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 		}
 
 		blockCid = cids[index]
-		attrKey = fileHash + blockCid.String() + strconv.FormatUint(index, 10)
-		attr, err = this.fsstore.GetBlockAttr(attrKey)
+		tag, err = this.GetTag(blockCid.String(), fileHash, index)
 		if err != nil {
 			log.Errorf("[internalProveFile] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
 			return false, err
 		}
 
-		tags = append(tags, attr.Tag)
+		tags = append(tags, tag)
 		blk, err := this.GetBlock(blockCid)
 		if err != nil {
 			log.Errorf("[internalProveFile] GetBlock for block %s error : %s", blockCid.String(), err)
@@ -404,6 +401,7 @@ func (this *MaxService) proveFileStore(fileHash string, height uint64, challenge
 	fsContract := this.chain.Native.Fs
 	byteTags := make([]pdp.Element, 0)
 	byteBlocks := make([]pdp.Block, 0)
+
 	for _, tag := range tags {
 		byteTags = append(byteTags, pdp.Element{
 			Buffer: tag,
@@ -413,6 +411,11 @@ func (this *MaxService) proveFileStore(fileHash string, height uint64, challenge
 		byteBlocks = append(byteBlocks, pdp.Block{
 			Buffer: block,
 		})
+	}
+
+	if len(challenges) != len(byteTags) || len(challenges) != len(byteBlocks) {
+		log.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
+		return fmt.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
 	}
 
 	multiRes, addRes := pdp.ProofGenerate(challenges, byteTags, byteBlocks)

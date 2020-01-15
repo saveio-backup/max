@@ -914,6 +914,10 @@ func (this *MaxService) AllKeysChan(ctx context.Context) (<-chan *cid.Cid, error
 }
 
 func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []byte) error {
+	if len(tag) == 0 {
+		log.Errorf("[PutTag] tag cannot be empty")
+		return fmt.Errorf("tag is empty")
+	}
 	attrKey := fileHash + blockHash + strconv.FormatUint(index, 10)
 
 	attr := fsstore.NewBlockAttr(blockHash, fileHash, index, tag)
@@ -923,7 +927,7 @@ func (this *MaxService) PutTag(blockHash, fileHash string, index uint64, tag []b
 		return fmt.Errorf("error putting tag :%t", err)
 	}
 
-	log.Debugf("[PutTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash, blockHash, index)
+	log.Debugf("[PutTag] success for fileHash : %s, blockHash : %s, index : %d, tag : %v", fileHash, blockHash, index, tag)
 	return nil
 }
 
@@ -935,7 +939,12 @@ func (this *MaxService) GetTag(blockHash, fileHash string, index uint64) ([]byte
 		return nil, err
 	}
 
-	log.Debugf("[GetTag] success for fileHash : %s, blockHash : %s, index : %d", fileHash, blockHash, index)
+	if len(attr.Tag) == 0 {
+		log.Errorf("[GetTag] tag is empty")
+		return nil, fmt.Errorf("tag is empty")
+	}
+
+	log.Debugf("[GetTag] success for fileHash : %s, blockHash : %s, index : %d, tag : %v", fileHash, blockHash, index, attr.Tag)
 	return attr.Tag, nil
 }
 
