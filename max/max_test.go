@@ -24,6 +24,7 @@ import (
 )
 
 const CHUNK_SIZE = 256 * 1024
+const TAG_LENGTH = 20
 const (
 	GC_PERIOD           = "1h"
 	GC_PERIOD_IMMEDIATE = "0s"
@@ -702,10 +703,10 @@ func TestPutGetTag(t *testing.T) {
 	index := rand.Uint64()
 	index2 := rand.Uint64()
 
-	var tag []byte
-	var tag2 []byte
-	var tag3 []byte
-	var tag4 []byte
+	tag := make([]byte, TAG_LENGTH)
+	tag2:= make([]byte, TAG_LENGTH)
+	tag3 := make([]byte, TAG_LENGTH)
+	tag4 := make([]byte, TAG_LENGTH)
 
 	rand.Read(tag)
 	rand.Read(tag2)
@@ -813,9 +814,9 @@ func TestPutGetTagMulti(t *testing.T) {
 }
 
 func initTagConfigs(count int, fileHash string, wg *sync.WaitGroup) []*TagConfig {
-	var tag []byte
 	var group []*TagConfig
 
+	tag := make([]byte, TAG_LENGTH)
 	for index := 0; index < count; index++ {
 		blockHash := RandStringBytes(20)
 		rand.Read(tag)
@@ -1016,7 +1017,7 @@ func TestAddFileFileStoreDuplicateBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// NOTE: cids will not include root cid or other intermediate cids who has no data
-	cids2, offsets, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+	cids2, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1645,7 +1646,7 @@ func TestGetAllCidsWithOffset(t *testing.T) {
 				t.Fatal(err)
 			}
 			// NOTE: cids will not include root cid or other intermediate cids who has no data
-			cids, offsets, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+			cids, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1893,7 +1894,7 @@ func TestPutBlockForFileStore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cids, offsets, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+			cids, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2137,12 +2138,13 @@ func TestSaveGetProveTasks(t *testing.T) {
 
 		rand.Read(brokenWalletAddr[:])
 
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		height := rand.Uint64()
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr,height)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum,height, brokenWalletAddr}
 	}
 
 	tasks, err := max.getProveTasks()
@@ -2197,15 +2199,16 @@ func TestDeleteProveTask(t *testing.T) {
 		var brokenWalletAddr [20]byte
 
 		rand.Read(brokenWalletAddr[:])
+		height := rand.Uint64()
 
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr,height)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		max.provetasks.Store(fileHash, struct{}{})
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum,height, brokenWalletAddr}
 	}
 
 	tasks, err := max.getProveTasks()
