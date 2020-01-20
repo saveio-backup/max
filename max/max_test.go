@@ -1092,6 +1092,68 @@ func TestFileStoreMultiPath(t *testing.T) {
 	}
 }
 
+func TestFileStoreMultiPathUpdate(t *testing.T) {
+	prefix := RandStringBytes(20)
+
+	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
+	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, prefix, false, "", nil}
+
+	result, err := addFileAndCheckFileContent(nil, initCfg, fileCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := result.list
+	max := result.max
+	buf := result.buf
+	filePath := result.filePath
+
+	cids, err := getCidsFromNodelist(list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids, result.buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// make 2nd file with same content
+	testdir, err := ioutil.TempDir("", "filestore-test")
+	fname, err := makeTempFile(testdir, getBufWithoutPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//add 2nd file with same prefix but differnt path
+	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cids2, err := getCidsFromNodelist(hashes[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkFileContent(max, cids2, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// update the file
+	err = makeFileWithLen(filePath,100*CHUNK_SIZE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check content can still be read
+	err = checkFileContent(max, cids2, getBufWithPrefix(buf, prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // test deleteFIle cannot delete immediately when periodic gc is set
 func TestDeleteFilePeriodic(t *testing.T) {
 	initCfg := &Config{"", true, FS_BLOCKSTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}

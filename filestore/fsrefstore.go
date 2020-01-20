@@ -110,17 +110,28 @@ func (f *FileManager) DeleteBlock(c *cid.Cid) error {
 // block from the datastore. The second step uses the stored
 // path and offsets to read the raw block data directly from disk.
 func (f *FileManager) Get(c *cid.Cid) (blocks.Block, error) {
-	dobj, err := f.getDataObj(c)
-	if err != nil {
+	dobjs, err := f.getDataObjs(c)
+	if err != nil{
 		return nil, err
 	}
 
-	out, err := f.readDataObj(c, dobj)
-	if err != nil {
-		return nil, err
+	var errs []error
+
+	for i, dobj := range dobjs{
+		out, err := f.readDataObj(c, dobj)
+		if err == nil {
+			return blocks.NewBlockWithCid(out, c)
+		}
+		errs = append(errs, err)
+		log.Debugf("readDataObj error : %s, index : %d", err, i)
 	}
 
-	return blocks.NewBlockWithCid(out, c)
+	var errstring string
+	for index, err := range errs{
+		str := fmt.Sprintf("error index: %d, %s;\t",index,err.Error())
+		errstring += str
+	}
+	return nil, fmt.Errorf("get block errors : %s", errstring)
 }
 
 func (f *FileManager) getDataObj(c *cid.Cid) (*pb.DataObj, error) {
