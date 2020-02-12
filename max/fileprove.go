@@ -51,7 +51,7 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		go this.proveFileService()
 	})
 
-	fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
+	fileProveDetails, err := this.getFileProveDetails(fileHash)
 	if err != nil {
 		// not found prove for the first time
 		log.Debugf("[StartPDPVerify] first prove for filehash: %s, GetFileProveDetails error : %s", fileHash, err)
@@ -218,7 +218,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		first, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
 	fsContract := this.chain.Native.Fs
 
-	fileInfo, err := fsContract.GetFileInfo(fileHash)
+	fileInfo, err := this.getFileInfo(fileHash)
 	if err != nil {
 		log.Errorf("[proveFile] GetFileInfo for fileHash : %s error : %s", fileHash, err)
 
@@ -241,17 +241,11 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		}
 	}
 
-	height, err := fsContract.Client.GetCurrentBlockHeight()
-	if err != nil {
-		log.Errorf("[proveFile] GetCurrentBlockHeight error : %s", err)
-		return err
-	}
-
-	hash, err := fsContract.Client.GetBlockHash(height)
-	if err != nil {
-		log.Errorf("[proveFile] GetBlockHash for height %d error : %s", height, err)
-		return err
-	}
+	height, hash := this.getCurrentBlockHeightAndHash()
+	if height == 0 {
+		log.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
+		return fmt.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
+    }
 
 	expireState := (ExpireState)(EXPIRE_NONE)
 	if !first {
@@ -259,9 +253,13 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		var firstProveHeight uint64
 
 		log.Debugf("[proveFile] not first prove for fileHash %s", fileHash)
-		fileProveDetails, err := fsContract.GetFileProveDetails(fileHash)
+		fileProveDetails, err := this.getFileProveDetails(fileHash)
 		if err != nil {
 			log.Errorf("[proveFile] GetFileProveDetails for fileHash %s error : %s", fileHash, err)
+			if strings.Contains(err.Error(),"FsGetFileProveDetails not found!"){
+				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
+				return nil
+			}
 			return err
 		}
 
@@ -392,8 +390,32 @@ func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockN
 		log.Errorf("[internalProveFile] proveFileStore for fileHash %s error : %s", fileHash, err)
 		return false, err
 	}
+
 	log.Debugf("[internalProveFile] prove success for fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
 		fileHash, blockNum, proveBlockNum, fileProveParam, hash.ToHexString(), height, luckyNum, bakHeight, bakNum, badNodeWalletAddr.ToBase58())
+
+	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
+	if err != nil{
+		log.Errorf("[internalProveFile] get prove details after success prove error : %s", err)
+		// delete cached prove details to force getting prove details from contract for next prove
+		this.rpcCache.deleteProveDetails(fileHash)
+	}else{
+		log.Debugf("try add prove details to cache after success prove")
+		found := false
+		for _, detail := range proveDetails.ProveDetails {
+			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+				found = true
+				break
+			}
+		}
+		if found{
+			log.Debugf("matching prove detail found, add prove detail to cache")
+			this.rpcCache.addProveDetails(fileHash,proveDetails)
+		}else{
+			log.Debugf("no matching prove detail found, delete cached prove detaisl")
+			this.rpcCache.deleteProveDetails(fileHash)
+		}
+	}
 	return true, nil
 }
 
@@ -429,20 +451,18 @@ func (this *MaxService) proveFileStore(fileHash string, height uint64, challenge
 		log.Errorf("[proveFileStore] file prove error : %s bakNum : %d", proveErr, bakNum)
 		return proveErr
 	}
-	// wait one confirmation
-	return this.waitOneConfirmation(height)
+	return this.waitForConfirmation(height)
 }
 
-func (this *MaxService) waitOneConfirmation(curBlockHeight uint64) error {
-	fsContract := this.chain.Native.Fs
+func (this *MaxService) waitForConfirmation(curBlockHeight uint64) error {
 	retry := 0
 	for {
 		if retry > MAX_RETRY_REQUEST_TIMES {
 			log.Errorf("[waitOneConfirmation] wait timeout")
 			return errors.New("wait timeout")
 		}
-		height, _ := fsContract.Client.GetCurrentBlockHeight()
-		if uint64(height) >= curBlockHeight+1 {
+		height, _:= this.getCurrentBlockHeightAndHash()
+		if uint64(height) >= curBlockHeight+2 {
 			log.Debugf("[waitOneConfirmation] wait ok")
 			return nil
 		}

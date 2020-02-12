@@ -95,11 +95,14 @@ type MaxService struct {
 	fsstore      *fsstore.FsStore
 	pinner       pin.Pinner
 	provetasks   *sync.Map
-	loadingtasks bool
 	repo         repo.Repo
 	chain        *sdk.Chain
 	config       *FSConfig
+	rpcCache     *Cache
+	loadingtasks bool
+	latestHeight uint32
 	killprove    chan struct{}
+	killevent    chan struct{}
 	Notify       chan *ProveTaskRemovalNotify
 }
 
@@ -261,7 +264,9 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			ChunkSize: config.ChunkSize,
 			GcPeriod:  config.GcPeriod,
 		},
+		rpcCache:  NewCache(),
 		killprove: make(chan struct{}),
+		killevent: make(chan struct{}),
 		Notify:    make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
 	}
 
@@ -270,6 +275,11 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		err = startPeriodicGC(context.TODO(), repo, config.GcPeriod, pinner, blockstore)
 		if err != nil {
 			log.Errorf("[NewMaxService] startPeriodicGC error", err)
+			return nil, err
+		}
+		err = service.StartEventFilter(MAX_REQUEST_TIMEWAIT)
+		if err != nil {
+			log.Errorf("[NewMaxService] StartEventFilter error", err)
 			return nil, err
 		}
 		err = service.loadPDPTasksOnStartup()
@@ -1004,6 +1014,9 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 			log.Errorf("[DeleteFile] delete fileblockhash error: %s", err)
 		}
 		log.Debugf("[DeleteFile] delete fileblockhash : %s", fileHash)
+		// clear rpc cache
+		this.rpcCache.deleteFileInfo(fileHash)
+		this.rpcCache.deleteProveDetails(fileHash)
 	}
 	return this.deleteFile(fileHash)
 }
@@ -1331,6 +1344,7 @@ func (this *MaxService) Close() error {
 		return err
 	}
 	this.StopFileProve()
+	this.StopEventFilter()
 	log.Debugf("[Close] success")
 	return nil
 }
