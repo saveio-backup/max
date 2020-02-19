@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/saveio/themis/crypto/pdp"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 
 	"github.com/saveio/themis/common/log"
 
 	"github.com/saveio/max/max/fsstore"
 	"github.com/saveio/themis/common"
-	"github.com/saveio/themis/crypto/pdp"
 )
 
 // start the PDP prove service, if it is called first time for a file, it should submit one immediately
@@ -170,7 +170,7 @@ func (this *MaxService) proveFileService() {
 	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	for {
 		select {
-		case <-this.killprove:
+		case <-this.kill:
 			log.Debugf("[proveFileService] service killed")
 			return
 		case <-ticker.C:
@@ -216,6 +216,11 @@ func (this *MaxService) deleteAndNotify(fileHash string, reason string) error {
 func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
 	log.Debugf("[proveFile] first: %v, fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWallet : %s",
 		first, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+
+	if this.IsScheduledForPdpCalculationOrSubmission(fileHash) {
+		return nil
+	}
+
 	fsContract := this.chain.Native.Fs
 
 	fileInfo, err := this.getFileInfo(fileHash)
@@ -245,7 +250,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	if height == 0 {
 		log.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
 		return fmt.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
-    }
+	}
 
 	expireState := (ExpireState)(EXPIRE_NONE)
 	if !first {
@@ -256,7 +261,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		fileProveDetails, err := this.getFileProveDetails(fileHash)
 		if err != nil {
 			log.Errorf("[proveFile] GetFileProveDetails for fileHash %s error : %s", fileHash, err)
-			if strings.Contains(err.Error(),"FsGetFileProveDetails not found!"){
+			if strings.Contains(err.Error(), "FsGetFileProveDetails not found!") {
 				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
 				return nil
 			}
@@ -307,120 +312,96 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return fmt.Errorf("invalid expire state")
 		}
 	}
-
-	_, err = this.internalProveFile(fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, hash, height, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+	bakParam := &BakParam{
+		LuckyNum:          luckyNum,
+		BakHeight:         bakHeight,
+		BakNum:            bakNum,
+		BadNodeWalletAddr: brokenWalletAddr,
+	}
+	err = this.scheduleForProve(fileInfo, bakParam, height, hash, height, expireState, first)
 	if err != nil {
-		log.Errorf("[proveFile] internalProveFile for fileHash %s error : %s", fileHash, err)
+		log.Errorf("failed to schedule for prove for file %s error %s", fileHash, err)
 		return err
 	}
-
-	if expireState == EXPIRE_LAST_PROVE {
-		log.Warnf("[proveFile] delete file and prove task for fileHash %s after last prove", fileHash)
-		this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
-		return nil
-	}
-
-	if first {
-		// saves the first prove height to check if fileinfo is deleted then added agian
-		err = this.saveProveTask(fileHash, 0, 0, 0, common.ADDRESS_EMPTY, uint64(height))
-		if err != nil {
-			log.Errorf("[proveFile] saveProveTask for fileHash %s error : %s", fileHash, err)
-			return err
-		}
-		log.Debugf("[proveFile] save prove task for filehash %s with first prove height %d after first prove", fileHash, height)
-	}
-
+	log.Debugf(" schedule file %s for pdp calculation", fileHash)
 	return nil
 }
+func (this *MaxService) doPdpCalculation(item *PDPCalItem) (result *PDPResult, err error) {
+	if item == nil || item.FileInfo == nil {
+		return nil, fmt.Errorf("pdp cal item is invalid")
+	}
 
-func (this *MaxService) internalProveFile(fileHash string, blockNum, proveBlockNum uint64, fileProveParam []byte,
-	hash common.Uint256, height uint32, luckyNum, bakHeight, bakNum uint64, badNodeWalletAddr common.Address) (bool, error) {
-	log.Debugf("[internalProveFile] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
-		fileHash, blockNum, proveBlockNum, fileProveParam, hash.ToHexString(), height, luckyNum, bakHeight, bakNum, badNodeWalletAddr.ToBase58())
-	fsContract := this.chain.Native.Fs
+	fileHash := item.FileHash
+	fileInfo := item.FileInfo
+	bakParm := item.BakParam
+	blockHeight := item.NextChalHeight
+	blockHash := item.BlockHash
 
-	challenges := fsContract.GenChallenge(fsContract.DefAcc.Address, hash, blockNum, proveBlockNum)
-
-	tags := make([][]byte, 0)
-	blocks := make([][]byte, 0)
+	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
+		fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, blockHash.ToHexString(), blockHeight,
+		bakParm.LuckyNum, bakParm.BakHeight, bakParm.BakNum, bakParm.BadNodeWalletAddr.ToBase58())
 
 	// get all cids
 	rootCid, err := cid.Decode(fileHash)
 	if err != nil {
-		log.Errorf("[internalProveFile] Decode for fileHash %s error : %s", fileHash, err)
-		return false, err
+		log.Errorf("[doPdpCalculation] Decode for fileHash %s error : %s", fileHash, err)
+		return nil, err
 	}
 	cids, err := this.GetFileAllCids(context.TODO(), rootCid)
 	if err != nil {
-		log.Errorf("[internalProveFile] GetFileAllCids for rootCid %s error : %s", rootCid.String(), err)
-		return false, err
+		log.Errorf("[doPdpCalculation] GetFileAllCids for rootCid %s error : %s", rootCid.String(), err)
+		return nil, err
 	}
 
+	challenges, tags, blocks, err := this.prepareForPdpCal(item, blockHash, cids)
+	if err != nil {
+		return nil, err
+	}
+
+	return this.generateProve(item, blockHeight, blockHash, challenges, tags, blocks)
+}
+
+func (this *MaxService) prepareForPdpCal(item *PDPCalItem, blockHash common.Uint256, cids []*cid.Cid) (challenges []pdp.Challenge, tags [][]byte, blocks [][]byte, err error) {
 	var blockCid *cid.Cid
 	var index uint64
 	var tag []byte
 
-	log.Debugf("[internalProveFile] challenges : %v", challenges)
+	fileHash := item.FileHash
+	fsContract := this.chain.Native.Fs
+
+	challenges = fsContract.GenChallenge(fsContract.DefAcc.Address, blockHash,
+		item.FileInfo.FileBlockNum, item.FileInfo.ProveBlockNum)
+
+	log.Debugf("[prepareForPdpCal] challenges : %v", challenges)
 	cidsLen := uint64(len(cids))
 	for _, c := range challenges {
 		index = uint64(c.Index - 1)
 		if index+1 > cidsLen {
-			log.Errorf("[internalProveFile] invalid index for fileHash %s index %d", fileHash, index)
-			return false, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
+			log.Errorf("[prepareForPdpCal] invalid index for fileHash %s index %d", fileHash, index)
+			return nil, nil, nil, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
 		}
 
 		blockCid = cids[index]
 		tag, err = this.GetTag(blockCid.String(), fileHash, index)
 		if err != nil {
-			log.Errorf("[internalProveFile] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
-			return false, err
+			log.Errorf("[prepareForPdpCal] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
+			return nil, nil, nil, err
 		}
 
 		tags = append(tags, tag)
 		blk, err := this.GetBlock(blockCid)
 		if err != nil {
-			log.Errorf("[internalProveFile] GetBlock for block %s error : %s", blockCid.String(), err)
-			return false, err
+			log.Errorf("[prepareForPdpCal] GetBlock for block %s error : %s", blockCid.String(), err)
+			return nil, nil, nil, err
 		}
 		blocks = append(blocks, blk.RawData())
 	}
 
-	err = this.proveFileStore(fileHash, uint64(height), challenges, tags, blocks, luckyNum, bakHeight, bakNum, badNodeWalletAddr)
-	if err != nil {
-		log.Errorf("[internalProveFile] proveFileStore for fileHash %s error : %s", fileHash, err)
-		return false, err
-	}
-
-	log.Debugf("[internalProveFile] prove success for fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
-		fileHash, blockNum, proveBlockNum, fileProveParam, hash.ToHexString(), height, luckyNum, bakHeight, bakNum, badNodeWalletAddr.ToBase58())
-
-	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
-	if err != nil{
-		log.Errorf("[internalProveFile] get prove details after success prove error : %s", err)
-		// delete cached prove details to force getting prove details from contract for next prove
-		this.rpcCache.deleteProveDetails(fileHash)
-	}else{
-		log.Debugf("try add prove details to cache after success prove")
-		found := false
-		for _, detail := range proveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
-				found = true
-				break
-			}
-		}
-		if found{
-			log.Debugf("matching prove detail found, add prove detail to cache")
-			this.rpcCache.addProveDetails(fileHash,proveDetails)
-		}else{
-			log.Debugf("no matching prove detail found, delete cached prove detaisl")
-			this.rpcCache.deleteProveDetails(fileHash)
-		}
-	}
-	return true, nil
+	return challenges, tags, blocks, nil
 }
+func (this *MaxService) generateProve(item *PDPCalItem, blockHeight uint32, blockHash common.Uint256, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) (*PDPResult, error) {
+	fileHash := item.FileHash
 
-func (this *MaxService) proveFileStore(fileHash string, height uint64, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte, luckyNum, bakHeight, bakNum uint64, badNodeWalletAddr common.Address) error {
-	fsContract := this.chain.Native.Fs
 	byteTags := make([]pdp.Element, 0)
 	byteBlocks := make([]pdp.Block, 0)
 
@@ -437,21 +418,86 @@ func (this *MaxService) proveFileStore(fileHash string, height uint64, challenge
 
 	if len(challenges) != len(byteTags) || len(challenges) != len(byteBlocks) {
 		log.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
-		return fmt.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
+		return nil, fmt.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
 	}
 
 	multiRes, addRes := pdp.ProofGenerate(challenges, byteTags, byteBlocks)
-	var proveErr error
-	if bakNum == 0 {
-		_, proveErr = fsContract.FileProve(fileHash, multiRes, addRes, height)
+	return &PDPResult{
+		MultiRes: multiRes,
+		AddRes:   addRes,
+	}, nil
+}
+
+func (this *MaxService) doPdpSubmission(item *PdpSubItem) error {
+	if item == nil {
+		log.Errorf("item for pdp submission is nil")
+		return fmt.Errorf("item for pdp submission is nil")
+	}
+
+	fsContract := this.chain.Native.Fs
+
+	fileHash := item.FileHash
+	bakParam := item.BakParam
+	pdpResult := item.PdpResult
+	height := uint64(item.NextChalHeight)
+
+	var err error
+	if bakParam.BakNum == 0 {
+		_, err = fsContract.FileProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height)
 	} else {
-		_, proveErr = fsContract.FileBackProve(fileHash, multiRes, addRes, height, luckyNum, bakHeight, bakNum, badNodeWalletAddr)
+		_, err = fsContract.FileBackProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height,
+			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr)
 	}
-	if proveErr != nil {
-		log.Errorf("[proveFileStore] file prove error : %s bakNum : %d", proveErr, bakNum)
-		return proveErr
+	if err != nil {
+		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
+		return err
 	}
-	return this.waitForConfirmation(height)
+	return nil
+}
+func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
+	fsContract := this.chain.Native.Fs
+	fileHash := item.FileHash
+	height := item.NextChalHeight
+
+	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
+	if err != nil {
+		log.Errorf("get prove details after success prove error : %s", err)
+		// delete cached prove details to force getting prove details from contract for next prove
+		this.rpcCache.deleteProveDetails(fileHash)
+	} else {
+		log.Debugf("try add prove details to cache after success prove")
+		found := false
+		for _, detail := range proveDetails.ProveDetails {
+			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+				found = true
+				break
+			}
+		}
+		if found {
+			log.Debugf("matching prove detail found, add prove detail to cache")
+			this.rpcCache.addProveDetails(fileHash, proveDetails)
+		} else {
+			log.Debugf("no matching prove detail found, delete cached prove detaisl")
+			this.rpcCache.deleteProveDetails(fileHash)
+		}
+	}
+
+	if item.ExpireState == EXPIRE_LAST_PROVE {
+		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
+		this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
+		return nil
+	}
+
+	if item.FirstProve {
+		// saves the first prove height to check if fileinfo is deleted then added agian
+		err := this.saveProveTask(fileHash, 0, 0, 0, common.ADDRESS_EMPTY, uint64(height))
+		if err != nil {
+			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
+			return err
+		}
+		log.Debugf("save prove task for fileHash %s with first prove height %d after first prove", fileHash, height)
+	}
+	return nil
 }
 
 func (this *MaxService) waitForConfirmation(curBlockHeight uint64) error {
@@ -461,7 +507,7 @@ func (this *MaxService) waitForConfirmation(curBlockHeight uint64) error {
 			log.Errorf("[waitOneConfirmation] wait timeout")
 			return errors.New("wait timeout")
 		}
-		height, _:= this.getCurrentBlockHeightAndHash()
+		height, _ := this.getCurrentBlockHeightAndHash()
 		if uint64(height) >= curBlockHeight+2 {
 			log.Debugf("[waitOneConfirmation] wait ok")
 			return nil

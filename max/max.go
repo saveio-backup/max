@@ -66,15 +66,17 @@ const (
 )
 
 const (
-	MAX_RETRY_REQUEST_TIMES                = 3  // max request retry times
-	MAX_REQUEST_TIMEWAIT                   = 5  // request time wait in second
-	PROVE_FILE_INTERVAL                    = 10 // 10s proves
-	MAX_PROVE_FILE_ROUTINES                = 10 // maximum of concurrent check prove files
-	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE     = 10 // default remove notify channel size
-	PROVE_TASK_REMOVAL_REASON_NORMAL       = "success"
-	PROVE_TASK_REMOVAL_REASON_EXPIRE       = "expire"
-	PROVE_TASK_REMOVAL_REASON_DELETE       = "file deleted"
-	PROVE_TASK_REMOVAL_REASON_FILE_RENEWED = "file renewed"
+	MAX_RETRY_REQUEST_TIMES                   = 3  // max request retry times
+	MAX_REQUEST_TIMEWAIT                      = 5  // request time wait in second
+	PROVE_FILE_INTERVAL                       = 10 // 10s proves
+	MAX_PROVE_FILE_ROUTINES                   = 10 // maximum of concurrent check prove files
+	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE        = 10 // default remove notify channel size
+	PDP_QUEUE_SIZE                            = 50 // pdp queue size for pdp calculation and submission
+	PROVE_TASK_REMOVAL_REASON_NORMAL          = "success"
+	PROVE_TASK_REMOVAL_REASON_EXPIRE          = "expire"
+	PROVE_TASK_REMOVAL_REASON_DELETE          = "file deleted"
+	PROVE_TASK_REMOVAL_REASON_FILE_RENEWED    = "file renewed"
+	PROVE_TASK_REMOVAL_REASON_PDP_CALCULATION = "pdp calculation"
 )
 
 const (
@@ -99,10 +101,11 @@ type MaxService struct {
 	chain        *sdk.Chain
 	config       *FSConfig
 	rpcCache     *Cache
+	pdpQueue     *PriorityQueue
+	submitQueue  *PriorityQueue
+	submitting   *sync.Map
 	loadingtasks bool
-	latestHeight uint32
-	killprove    chan struct{}
-	killevent    chan struct{}
+	kill         chan struct{}
 	Notify       chan *ProveTaskRemovalNotify
 }
 
@@ -264,10 +267,12 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			ChunkSize: config.ChunkSize,
 			GcPeriod:  config.GcPeriod,
 		},
-		rpcCache:  NewCache(),
-		killprove: make(chan struct{}),
-		killevent: make(chan struct{}),
-		Notify:    make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
+		rpcCache:    NewCache(),
+		pdpQueue:    NewPriorityQueue(PDP_QUEUE_SIZE),
+		submitQueue: NewPriorityQueue(PDP_QUEUE_SIZE),
+		submitting:  new(sync.Map),
+		kill:        make(chan struct{}),
+		Notify:      make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
 	}
 
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
@@ -282,6 +287,10 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			log.Errorf("[NewMaxService] StartEventFilter error", err)
 			return nil, err
 		}
+
+		go service.startPdpCalculationService()
+		go service.startPdpSubmissionService()
+
 		err = service.loadPDPTasksOnStartup()
 		if err != nil {
 			log.Errorf("[NewMaxService] loadPDPTasksOnStartup error: %s", err)
@@ -1344,13 +1353,12 @@ func (this *MaxService) Close() error {
 		return err
 	}
 	this.StopFileProve()
-	this.StopEventFilter()
 	log.Debugf("[Close] success")
 	return nil
 }
 
 func (this *MaxService) StopFileProve() {
-	close(this.killprove)
+	close(this.kill)
 	log.Debugf("[StopFileProve] stop prove task")
 }
 

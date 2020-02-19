@@ -2,21 +2,23 @@ package max
 
 import (
 	"fmt"
-	"reflect"
 	"github.com/saveio/themis/common/log"
 	"github.com/saveio/themis/smartcontract/service/native/utils"
+	"reflect"
 	"time"
 )
 
-func (this *MaxService) StartEventFilter(interval uint32) error{
+func (this *MaxService) StartEventFilter(interval uint32) error {
 	// make sure this run before load pdp task to get block height and hash
-	_,_,err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
-	if err != nil{
+	_, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
+	if err != nil {
 		return err
 	}
 
-	go func(){
-		fsContractAddr:= utils.OntFSContractAddress.ToHexString()
+	go func() {
+		var latestHeight uint32
+
+		fsContractAddr := utils.OntFSContractAddress.ToHexString()
 
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		log.Debugf("start event filter")
@@ -25,17 +27,17 @@ func (this *MaxService) StartEventFilter(interval uint32) error{
 		for {
 			select {
 			case <-ticker.C:
-			    height, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
-			    if err != nil{
-			    	log.Errorf("get block height and hash from chain error %s", err)
-			    	continue
-				}
-
-				if height <= this.latestHeight {
+				height, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
+				if err != nil {
+					log.Errorf("get block height and hash from chain error %s", err)
 					continue
 				}
 
-				this.latestHeight = height
+				if height <= latestHeight {
+					continue
+				}
+
+				latestHeight = height
 
 				// get events by height
 				events, err := this.getContractEvents(height, fsContractAddr)
@@ -47,7 +49,7 @@ func (this *MaxService) StartEventFilter(interval uint32) error{
 				for _, event := range events {
 					this.processEvent(event)
 				}
-			case <-this.killevent:
+			case <-this.kill:
 				log.Debugf("stop event filter")
 				return
 			}
@@ -56,12 +58,8 @@ func (this *MaxService) StartEventFilter(interval uint32) error{
 	return nil
 }
 
-func (this *MaxService) StopEventFilter(){
-	close(this.killevent)
-}
-
 func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress string) ([]map[string]interface{}, error) {
-    log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
+	log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
 	var eventRe = make([]map[string]interface{}, 0)
 
 	raws, err := this.chain.GetSmartContractEventsByBlock(blockHeight)
@@ -79,8 +77,8 @@ func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress st
 			continue
 		}
 		for _, notify := range raw.Notify {
-		    if notify.ContractAddress != contractAddress{
-		    	continue
+			if notify.ContractAddress != contractAddress {
+				continue
 			}
 			if _, ok := notify.States.(map[string]interface{}); !ok {
 				continue
@@ -102,7 +100,7 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 	eventName = event["eventName"].(string)
 
 	parsedEvent, err := parseEvent(event)
-	if err != nil{
+	if err != nil {
 		log.Errorf("parse event error : %s", err)
 		return
 	}
@@ -111,52 +109,52 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 	case "deleteFile":
 		this.processDeleteFileEvent(parsedEvent)
 	case "deleteFiles":
-	    this.processDeleteFilesEvent(parsedEvent)
+		this.processDeleteFilesEvent(parsedEvent)
 	default:
 		return
 	}
 	return
 }
 
-func (this *MaxService) processDeleteFileEvent(event map[string]interface{}){
-	fileHash:= event["fileHash"].(string)
-	walletAddr:= event["walletAddr"].(string)
+func (this *MaxService) processDeleteFileEvent(event map[string]interface{}) {
+	fileHash := event["fileHash"].(string)
+	walletAddr := event["walletAddr"].(string)
 
 	log.Debugf("process deleteFile event: fileHash %s, walletAddr %s", fileHash, walletAddr)
 
 	this.processOneFileDelete(fileHash)
 }
 
-func (this *MaxService) processDeleteFilesEvent(event map[string]interface{}){
-	fileHashes:= event["fileHashes"].([]string)
-	walletAddr:= event["walletAddr"].(string)
+func (this *MaxService) processDeleteFilesEvent(event map[string]interface{}) {
+	fileHashes := event["fileHashes"].([]string)
+	walletAddr := event["walletAddr"].(string)
 
 	log.Debugf("process deleteFiles event: fileHashes %v, walletAddr %s", fileHashes, walletAddr)
 
-	for _, fileHash := range fileHashes{
+	for _, fileHash := range fileHashes {
 		this.processOneFileDelete(fileHash)
 	}
 }
 
-func (this *MaxService) processOneFileDelete(fileHash string){
-	_, ok:= this.provetasks.Load(fileHash)
-	if ok{
-		err := this.deleteAndNotify(fileHash,PROVE_TASK_REMOVAL_REASON_DELETE)
-		if err != nil{
+func (this *MaxService) processOneFileDelete(fileHash string) {
+	_, ok := this.provetasks.Load(fileHash)
+	if ok {
+		err := this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_DELETE)
+		if err != nil {
 			log.Errorf("processDeleteFile error %s", err)
 			return
 		}
 	}
 }
-func parseEvent(event map[string]interface{}) (map[string]interface{},error) {
+func parseEvent(event map[string]interface{}) (map[string]interface{}, error) {
 	events := make(map[string]interface{})
 
 	stopLoop := false
 	for key, value := range event {
-		switch key{
+		switch key {
 		case "fileHash":
-			fileHash,ok :=value.(string)
-			if !ok{
+			fileHash, ok := value.(string)
+			if !ok {
 				stopLoop = true
 				break
 			}
@@ -173,8 +171,8 @@ func parseEvent(event map[string]interface{}) (map[string]interface{},error) {
 			}
 			events[key] = fileHashes
 		case "walletAddr":
-			walletAddr,ok :=value.(string)
-			if !ok{
+			walletAddr, ok := value.(string)
+			if !ok {
 				stopLoop = true
 				break
 			}
@@ -186,7 +184,7 @@ func parseEvent(event map[string]interface{}) (map[string]interface{},error) {
 				key, reflect.TypeOf(value).String())
 		}
 	}
-	return events,nil
+	return events, nil
 }
 func parseStringSliceFromInterfaceSlice(slice []interface{}) ([]string, error) {
 	result := []string{}
@@ -199,5 +197,3 @@ func parseStringSliceFromInterfaceSlice(slice []interface{}) ([]string, error) {
 	}
 	return result, nil
 }
-
-
