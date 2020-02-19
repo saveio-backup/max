@@ -144,8 +144,6 @@ func (this *MaxService) ScheduleForPdpSubmission(item *PDPCalItem, pdpResult *PD
 }
 
 func (this *MaxService) startPdpSubmissionService() {
-	var pdpSubItem *PdpSubItem
-
 	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	log.Debugf("start pdp submission service")
 
@@ -159,7 +157,7 @@ func (this *MaxService) startPdpSubmissionService() {
 					break
 				}
 
-				pdpSubItem = item.Value.(*PdpSubItem)
+				pdpSubItem := item.Value.(*PdpSubItem)
 				fileHash := pdpSubItem.FileHash
 
 				currentHeight, _ := this.getCurrentBlockHeightAndHash()

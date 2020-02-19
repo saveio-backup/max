@@ -442,16 +442,20 @@ func (this *MaxService) doPdpSubmission(item *PdpSubItem) error {
 	height := uint64(item.NextChalHeight)
 
 	var err error
+	var txHash []byte
+
 	if bakParam.BakNum == 0 {
-		_, err = fsContract.FileProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height)
+		txHash, err = fsContract.FileProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height)
 	} else {
-		_, err = fsContract.FileBackProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height,
+		txHash, err = fsContract.FileBackProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height,
 			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr)
 	}
 	if err != nil {
 		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
 		return err
 	}
+
+	log.Debugf("call fileProve for file %s success with txHash %s", fileHash, getTxHashString(txHash))
 	return nil
 }
 func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
@@ -544,4 +548,12 @@ func checkProveExpire(currBlockHeight uint64, firstProveHeight uint64, provedTim
 	} else {
 		return EXPIRE_NEED_PROVE
 	}
+}
+func getTxHashString(txHash []byte) string {
+	hash, err := common.Uint256ParseFromBytes(txHash)
+	if err != nil {
+		log.Errorf("parse tx hash error")
+		return "error parsing tx hash"
+	}
+	return hash.ToHexString()
 }
