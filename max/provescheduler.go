@@ -5,7 +5,6 @@ import (
 	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
-	"time"
 )
 
 type PDPCalItem struct {
@@ -32,43 +31,46 @@ type PDPResult struct {
 }
 
 func (this *MaxService) startPdpCalculationService() {
-	var item *Item
-	var pdpCalItem *PDPCalItem
-
-	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	log.Debugf("start pdp calculation service")
 
 	for {
 		select {
-		case <-ticker.C:
-			for this.pdpQueue.Len() > 0 {
-				item = this.pdpQueue.FirstItem()
-				if item == nil {
-					log.Errorf("no item in calculation queue")
-					break
-				}
-
-				pdpCalItem = item.Value.(*PDPCalItem)
-				fileHash := pdpCalItem.FileHash
-
-				pdpResult, err := this.doPdpCalculation(pdpCalItem)
-				if err != nil {
-					log.Errorf("do pdp calculation for file %s error %s", fileHash, err)
-					this.deleteAndNotify(pdpCalItem.FileHash, PROVE_TASK_REMOVAL_REASON_PDP_CALCULATION)
-				} else {
-					this.ScheduleForPdpSubmission(pdpCalItem, pdpResult)
-				}
-
-				removed := this.pdpQueue.Remove(item.Key)
-				if !removed {
-					log.Errorf("error to remove item with key %v from pdp queue", item.Key)
-				}
-			}
+		case <-this.pdpQueue.GetPushNotifyChan():
+			this.processPdpCalculationQueue()
 		case <-this.kill:
 			log.Debug("quit pdp calculation service")
 			return
 		}
 	}
+}
+
+// process item in the pdp calculation queue
+func (this *MaxService) processPdpCalculationQueue() {
+	for this.pdpQueue.Len() > 0 {
+		item := this.pdpQueue.FirstItem()
+		if item == nil {
+			log.Debugf("no item in calculation queue")
+			return
+		}
+
+		pdpCalItem := item.Value.(*PDPCalItem)
+		fileHash := pdpCalItem.FileHash
+
+		pdpResult, err := this.doPdpCalculation(pdpCalItem)
+		if err != nil {
+			log.Errorf("do pdp calculation for file %s error %s", fileHash, err)
+			this.deleteAndNotify(pdpCalItem.FileHash, PROVE_TASK_REMOVAL_REASON_PDP_CALCULATION)
+		} else {
+			this.ScheduleForPdpSubmission(pdpCalItem, pdpResult)
+		}
+
+		// NOTE: cannot use pop here, since queue might have been updated
+		removed := this.pdpQueue.Remove(item.Key)
+		if !removed {
+			log.Errorf("error to remove item with key %v from pdp queue", item.Key)
+		}
+	}
+	return
 }
 
 func (this *MaxService) IsScheduledForPdpCalculationOrSubmission(fileHash string) bool {
@@ -144,64 +146,68 @@ func (this *MaxService) ScheduleForPdpSubmission(item *PDPCalItem, pdpResult *PD
 }
 
 func (this *MaxService) startPdpSubmissionService() {
-	ticker := time.NewTicker(time.Duration(PROVE_FILE_INTERVAL) * time.Second)
 	log.Debugf("start pdp submission service")
 
 	for {
 		select {
-		case <-ticker.C:
-			for this.submitQueue.Len() > 0 {
-				item := this.submitQueue.FirstItem()
-				if item == nil {
-					log.Errorf("no item in submission queue")
-					break
-				}
-
-				pdpSubItem := item.Value.(*PdpSubItem)
-				fileHash := pdpSubItem.FileHash
-
-				currentHeight, _ := this.getCurrentBlockHeightAndHash()
-				if currentHeight >= pdpSubItem.NextSubHeight {
-					log.Debugf("time to submit file prove for file %s", fileHash)
-
-					// put in the submission map since the waitForConfirmation will block
-					// following submission if not run in a go routine, and make sure it
-					// can not be scheduled before submission finish
-					this.submitting.Store(fileHash, struct{}{})
-
-					go func() {
-						defer this.submitting.Delete(fileHash)
-
-						err := this.doPdpSubmission(pdpSubItem)
-						if err != nil {
-							// TODO : on prove error need to delete the file
-							log.Errorf("doPdpSubmission for file %s error %s", fileHash, err)
-						} else {
-							err = this.waitForConfirmation(uint64(currentHeight))
-							if err != nil {
-								log.Errorf("waitForConfirmation for file %s error %s", fileHash, err)
-							} else {
-								log.Debugf("prove success for fileHash : %s", fileHash)
-								err = this.onSuccessPdpSubmission(pdpSubItem)
-								if err != nil {
-									log.Errorf("onSuccessPdpSubmission for file %s error %s", fileHash, err)
-								}
-							}
-						}
-					}()
-
-					removed := this.submitQueue.Remove(item.Key)
-					if !removed {
-						log.Errorf("error to remove item with key %v from submit queue", item.Key)
-					}
-				} else {
-					log.Debugf("not time to submit file prove")
-					break
-				}
-			}
+		case <-this.submitQueue.GetPushNotifyChan():
+			this.processPdpSubmissionQueue()
 		case <-this.kill:
 			log.Debug("quit pdp submission service")
 			return
 		}
 	}
+}
+
+func (this *MaxService) processPdpSubmissionQueue() {
+	for this.submitQueue.Len() > 0 {
+		item := this.submitQueue.FirstItem()
+		if item == nil {
+			log.Errorf("no item in submission queue")
+			return
+		}
+
+		pdpSubItem := item.Value.(*PdpSubItem)
+		fileHash := pdpSubItem.FileHash
+
+		currentHeight, _ := this.getCurrentBlockHeightAndHash()
+		if currentHeight >= pdpSubItem.NextSubHeight {
+			log.Debugf("time to submit file prove for file %s", fileHash)
+
+			// put in the submission map since the waitForConfirmation will block
+			// following submission if not run in a go routine, and make sure it
+			// can not be scheduled before submission finish
+			this.submitting.Store(fileHash, struct{}{})
+
+			go func() {
+				defer this.submitting.Delete(fileHash)
+
+				err := this.doPdpSubmission(pdpSubItem)
+				if err != nil {
+					// TODO : on prove error need to delete the file
+					log.Errorf("doPdpSubmission for file %s error %s", fileHash, err)
+				} else {
+					err = this.waitForConfirmation(uint64(currentHeight))
+					if err != nil {
+						log.Errorf("waitForConfirmation for file %s error %s", fileHash, err)
+					} else {
+						log.Debugf("prove success for fileHash : %s", fileHash)
+						err = this.onSuccessPdpSubmission(pdpSubItem)
+						if err != nil {
+							log.Errorf("onSuccessPdpSubmission for file %s error %s", fileHash, err)
+						}
+					}
+				}
+			}()
+
+			removed := this.submitQueue.Remove(item.Key)
+			if !removed {
+				log.Errorf("error to remove item with key %v from submit queue", item.Key)
+			}
+		} else {
+			log.Debugf("not time to submit file prove")
+			return
+		}
+	}
+	return
 }

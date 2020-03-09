@@ -52,15 +52,17 @@ func (this *ItemSlice) Update(item *Item, value interface{}, priority int) {
 }
 
 type PriorityQueue struct {
-	Items ItemSlice
-	Size  int
-	lock  sync.RWMutex
+	Items      ItemSlice
+	Size       int
+	PushNotify chan struct{}
+	lock       sync.RWMutex
 }
 
 func NewPriorityQueue(size int) *PriorityQueue {
 	queue := &PriorityQueue{
-		Items: make([]*Item, 0, size),
-		Size:  size,
+		Items:      make([]*Item, 0, size),
+		Size:       size,
+		PushNotify: make(chan struct{}, size),
 	}
 	heap.Init(&queue.Items)
 	return queue
@@ -80,6 +82,7 @@ func (this *PriorityQueue) Push(item *Item) error {
 		return fmt.Errorf("item exist for key %v", item.Key)
 	}
 	heap.Push(&this.Items, item)
+	this.PushNotify <- struct{}{}
 	return nil
 }
 
@@ -166,4 +169,7 @@ func (this *PriorityQueue) Remove(key interface{}) (removed bool) {
 	this.Items = append(this.Items[0:index], this.Items[index+1:]...)
 	heap.Init(&this.Items)
 	return true
+}
+func (this *PriorityQueue) GetPushNotifyChan() chan struct{} {
+	return this.PushNotify
 }
