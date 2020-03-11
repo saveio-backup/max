@@ -467,7 +467,10 @@ func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
 	if err != nil {
 		log.Errorf("get prove details after success prove error : %s", err)
 		// delete cached prove details to force getting prove details from contract for next prove
+		// when proveDetail not found, fileInfo may have been deleted
 		this.rpcCache.deleteProveDetails(fileHash)
+
+		return fmt.Errorf("get prove details after success prove error : %s", err)
 	} else {
 		log.Debugf("try add prove details to cache after success prove")
 		found := false
@@ -481,8 +484,10 @@ func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
 			log.Debugf("matching prove detail found, add prove detail to cache")
 			this.rpcCache.addProveDetails(fileHash, proveDetails)
 		} else {
-			log.Debugf("no matching prove detail found, delete cached prove detaisl")
+			log.Debugf("no matching prove detail found, delete cached prove details")
 			this.rpcCache.deleteProveDetails(fileHash)
+
+			return fmt.Errorf("no matching prove detail found, delete cached prove details")
 		}
 	}
 
