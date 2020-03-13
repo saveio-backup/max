@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -41,8 +42,8 @@ import (
 	"github.com/saveio/max/importer/balanced"
 	"github.com/saveio/max/importer/helpers"
 	"github.com/saveio/max/max/crypto"
-	"github.com/saveio/max/max/dbstore"
 	"github.com/saveio/max/max/fsstore"
+	"github.com/saveio/max/max/leveldbstore"
 	"github.com/saveio/max/merkledag"
 	"github.com/saveio/max/merkledag/traverse"
 	"github.com/saveio/max/pin"
@@ -81,6 +82,10 @@ const (
 
 const (
 	LARGE_FILE_THRESHOLD = 256 * 1024 * 1024
+)
+
+const (
+	FSSTORE_PATH = "./fsstore"
 )
 
 type ProveTaskRemovalNotify struct {
@@ -212,7 +217,11 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		TempErrFunc: isTooManyFDError,
 	}
 
-	fsstore := fsstore.NewFsStore(rds)
+	fsstore, err := fsstore.NewFsStore(path.Join(config.RepoRoot, FSSTORE_PATH))
+	if err != nil {
+		log.Errorf("[NewMaxService] open fsstore error : %s", err)
+		return nil, err
+	}
 
 	// hash security
 	bs := bstore.NewBlockstore(dssync.MutexWrap(rds))
@@ -840,7 +849,7 @@ func (this *MaxService) getFilePrefixes() (map[string]string, error) {
 	prefixes, err := this.fsstore.GetFilePrefixes()
 	if err != nil {
 		// TO Check what will be returned if no matching data
-		if err == dbstore.ErrNotFound {
+		if err == leveldbstore.ErrNotFound {
 			log.Debugf("[getFilePrefixes] GetFilePrefixes not found error")
 			return nil, nil
 		}
@@ -1188,7 +1197,7 @@ func (this *MaxService) GetFileAllCids(ctx context.Context, rootCid *cid.Cid) ([
 			cids = append(cids, cid)
 		}
 		return cids, nil
-	} else if err != dbstore.ErrNotFound {
+	} else if err != leveldbstore.ErrNotFound {
 		log.Errorf("[GetFileAllCids] GetFileBlockHashes error : %s", err)
 		return nil, err
 	}
@@ -1350,6 +1359,11 @@ func (this *MaxService) Close() error {
 	err := this.repo.Close()
 	if err != nil {
 		log.Errorf("[Close] repo close error : %s", err)
+		return err
+	}
+	err = this.fsstore.Close()
+	if err != nil {
+		log.Errorf("[Close] fsstore close error : %s", err)
 		return err
 	}
 	this.StopFileProve()

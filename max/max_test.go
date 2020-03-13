@@ -704,7 +704,7 @@ func TestPutGetTag(t *testing.T) {
 	index2 := rand.Uint64()
 
 	tag := make([]byte, TAG_LENGTH)
-	tag2:= make([]byte, TAG_LENGTH)
+	tag2 := make([]byte, TAG_LENGTH)
 	tag3 := make([]byte, TAG_LENGTH)
 	tag4 := make([]byte, TAG_LENGTH)
 
@@ -1017,7 +1017,7 @@ func TestAddFileFileStoreDuplicateBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// NOTE: cids will not include root cid or other intermediate cids who has no data
-	cids2, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+	cids2, offsets, _, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1142,7 +1142,7 @@ func TestFileStoreMultiPathUpdate(t *testing.T) {
 	}
 
 	// update the file
-	err = makeFileWithLen(filePath,100*CHUNK_SIZE)
+	err = makeFileWithLen(filePath, 100*CHUNK_SIZE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1708,7 +1708,7 @@ func TestGetAllCidsWithOffset(t *testing.T) {
 				t.Fatal(err)
 			}
 			// NOTE: cids will not include root cid or other intermediate cids who has no data
-			cids, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+			cids, offsets, _, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1956,7 +1956,7 @@ func TestPutBlockForFileStore(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cids, offsets, _,err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
+			cids, offsets, _, err := max.GetFileAllCidsWithOffset(context.TODO(), rootCid)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2201,12 +2201,12 @@ func TestSaveGetProveTasks(t *testing.T) {
 		rand.Read(brokenWalletAddr[:])
 
 		height := rand.Uint64()
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr,height)
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum,height, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, height, brokenWalletAddr}
 	}
 
 	tasks, err := max.getProveTasks()
@@ -2221,7 +2221,7 @@ func TestSaveGetProveTasks(t *testing.T) {
 	}
 
 	//try get the provetasks after reopen repo
-	max.repo.Close()
+	max.Close()
 
 	max, err = NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
 	if err != nil {
@@ -2263,14 +2263,14 @@ func TestDeleteProveTask(t *testing.T) {
 		rand.Read(brokenWalletAddr[:])
 		height := rand.Uint64()
 
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr,height)
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		max.provetasks.Store(fileHash, struct{}{})
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum,height, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, height, brokenWalletAddr}
 	}
 
 	tasks, err := max.getProveTasks()

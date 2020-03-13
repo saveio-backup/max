@@ -3,16 +3,9 @@ package fsstore
 import (
 	"encoding/json"
 	"errors"
-	ds "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
-	query "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/query"
-
-	//logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
-
-	"github.com/saveio/max/max/dbstore"
+	"github.com/saveio/max/max/leveldbstore"
 	"github.com/saveio/themis/common"
 )
-
-//var log = logging.Logger("fsstore")
 
 const (
 	BLOCK_ATTR_PREFIX      = "blockattr:"
@@ -21,6 +14,19 @@ const (
 	PROVE_PARAM_KEY        = "proveparam"
 	FILE_BLOCKHASH_KEY     = "fileblockhash:"
 )
+
+type FsStore struct {
+	db *leveldbstore.LevelDBStore
+}
+
+func NewFsStore(file string) (*FsStore, error) {
+	db, err := leveldbstore.NewLevelDBStore(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FsStore{db}, nil
+}
 
 type BlockAttr struct {
 	Index    uint64 `json:"index"`
@@ -38,7 +44,6 @@ func NewBlockAttr(blockHashStr, fileHashStr string, index uint64, tag []byte) *B
 	}
 }
 
-// TODO: using protobuf serialize
 func (p *BlockAttr) Serialization() ([]byte, error) {
 	return json.Marshal(p)
 }
@@ -108,18 +113,8 @@ func (p *FileBlockHash) Deserialization(raw []byte) error {
 	return json.Unmarshal(raw, p)
 }
 
-type FsStore struct {
-	db dbstore.DBStore
-}
-
-func NewFsStore(d ds.Batching) *FsStore {
-	dbs := dbstore.NewDBstore(d)
-	db := dbstore.NewGCDBStore(dbs, dbstore.NewGCLocker())
-
-	fss := &FsStore{}
-	fss.db = db
-
-	return fss
+func (fss *FsStore) Close() error {
+	return fss.db.Close()
 }
 
 func (fss *FsStore) GetBlockAttr(key string) (*BlockAttr, error) {
@@ -162,23 +157,11 @@ func (fss *FsStore) DeleteBlockAttr(key string) error {
 func (fss *FsStore) GetBlockAttrsWithPrefix(prefix string) ([]*BlockAttr, error) {
 	var blockAttrs []*BlockAttr
 
-	q := query.Query{Prefix: genBlockAttrKey(prefix)}
-	result, err := fss.db.Query(q)
-	if err != nil {
-		return nil, err
-	}
+	iter := fss.db.NewIterator(genBlockAttrKey(prefix))
 
-	for entry := range result.Next() {
-		if entry.Error != nil {
-			return nil, entry.Error
-		}
-
-		if _, ok := entry.Value.([]byte); !ok {
-			return nil, errors.New("value not byte slice")
-		}
-
+	for iter.Next() {
 		p := &BlockAttr{}
-		err = p.Deserialization(entry.Value.([]byte))
+		err := p.Deserialization(iter.Value())
 		if err != nil {
 			return nil, errors.New("the retrieved value is not a blockattr")
 		}
@@ -192,23 +175,11 @@ func (fss *FsStore) GetBlockAttrsWithPrefix(prefix string) ([]*BlockAttr, error)
 func (fss *FsStore) GetFilePrefixes() ([]*FilePrefix, error) {
 	var filePrefixes []*FilePrefix
 
-	q := query.Query{Prefix: FILE_PREFIX_KEY}
-	result, err := fss.db.Query(q)
-	if err != nil {
-		return nil, err
-	}
+	iter := fss.db.NewIterator(genFilePrefixesKey(""))
 
-	for entry := range result.Next() {
-		if entry.Error != nil {
-			return nil, entry.Error
-		}
-
-		if _, ok := entry.Value.([]byte); !ok {
-			return nil, errors.New("value not byte slice")
-		}
-
+	for iter.Next() {
 		p := &FilePrefix{}
-		err = p.Deserialization(entry.Value.([]byte))
+		err := p.Deserialization(iter.Value())
 		if err != nil {
 			return nil, errors.New("the retrieved value is not a fileprefixes")
 		}
@@ -234,23 +205,11 @@ func (fss *FsStore) PutFilePrefix(key string, p *FilePrefix) error {
 func (fss *FsStore) GetProveParams() ([]*ProveParam, error) {
 	var params []*ProveParam
 
-	q := query.Query{Prefix: PROVE_PARAM_KEY}
-	result, err := fss.db.Query(q)
-	if err != nil {
-		return nil, err
-	}
+	iter := fss.db.NewIterator(genProveParamKey(""))
 
-	for entry := range result.Next() {
-		if entry.Error != nil {
-			return nil, entry.Error
-		}
-
-		if _, ok := entry.Value.([]byte); !ok {
-			return nil, errors.New("value not byte slice")
-		}
-
+	for iter.Next() {
 		p := &ProveParam{}
-		err = p.Deserialization(entry.Value.([]byte))
+		err := p.Deserialization(iter.Value())
 		if err != nil {
 			return nil, errors.New("the retrieved value is not a prove param")
 		}
@@ -333,22 +292,22 @@ func (fss *FsStore) DeleteFileBlockHash(key string) error {
 	return err
 }
 
-func genBlockAttrKey(k string) string {
-	return BLOCK_ATTR_PREFIX + k
+func genBlockAttrKey(key string) []byte {
+	return ([]byte)(BLOCK_ATTR_PREFIX + key)
 }
 
-func genBlockTagIndexKey(k string) string {
-	return BLOCK_TAG_INDEX_PREFIX + k
+func genBlockTagIndexKey(key string) []byte {
+	return ([]byte)(BLOCK_TAG_INDEX_PREFIX + key)
 }
 
-func genFilePrefixesKey(k string) string {
-	return FILE_PREFIX_KEY + k
+func genFilePrefixesKey(key string) []byte {
+	return ([]byte)(FILE_PREFIX_KEY + key)
 }
 
-func genProveParamKey(k string) string {
-	return PROVE_PARAM_KEY + k
+func genProveParamKey(key string) []byte {
+	return ([]byte)(PROVE_PARAM_KEY + key)
 }
 
-func genFileBlockHashKey(k string) string {
-	return FILE_BLOCKHASH_KEY + k
+func genFileBlockHashKey(key string) []byte {
+	return ([]byte)(FILE_BLOCKHASH_KEY + key)
 }
