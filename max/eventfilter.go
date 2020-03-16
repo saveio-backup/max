@@ -9,6 +9,10 @@ import (
 )
 
 func (this *MaxService) StartEventFilter(interval uint32) error {
+	if this.chain == nil {
+		return nil
+	}
+
 	// make sure this run before load pdp task to get block height and hash
 	_, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
 	if err != nil {
