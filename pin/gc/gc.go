@@ -76,6 +76,7 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 		errors := false
 		var removed uint64
 
+		deletedSet := cid.NewSet()
 	loop:
 		for {
 			select {
@@ -83,7 +84,7 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 				if !ok {
 					break loop
 				}
-				if !gcs.Has(k) {
+				if !gcs.Has(k) && !deletedSet.Has(k) {
 					err := bs.DeleteBlock(k)
 					removed++
 					if err != nil {
@@ -93,6 +94,7 @@ func GC(ctx context.Context, bs bstore.GCBlockstore, dstor dstore.Datastore, pn 
 						// continue as error is non-fatal
 						continue loop
 					}
+					deletedSet.Add(k)
 					select {
 					case output <- Result{KeyRemoved: k}:
 					case <-ctx.Done():
