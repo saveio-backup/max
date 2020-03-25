@@ -428,10 +428,10 @@ func (this *MaxService) generateProve(item *PDPCalItem, blockHeight uint32, bloc
 	}, nil
 }
 
-func (this *MaxService) doPdpSubmission(item *PdpSubItem) error {
+func (this *MaxService) doPdpSubmission(item *PdpSubItem) ([]byte, error) {
 	if item == nil {
 		log.Errorf("item for pdp submission is nil")
-		return fmt.Errorf("item for pdp submission is nil")
+		return nil, fmt.Errorf("item for pdp submission is nil")
 	}
 
 	fsContract := this.chain.Native.Fs
@@ -452,13 +452,13 @@ func (this *MaxService) doPdpSubmission(item *PdpSubItem) error {
 	}
 	if err != nil {
 		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
-		return err
+		return nil, err
 	}
 
 	log.Debugf("call fileProve for file %s success with txHash %s", fileHash, getTxHashString(txHash))
-	return nil
+	return txHash, nil
 }
-func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
+func (this *MaxService) onSuccessfulPdpSubmission(item *PdpSubItem) error {
 	fsContract := this.chain.Native.Fs
 	fileHash := item.FileHash
 	height := item.NextChalHeight
@@ -509,21 +509,17 @@ func (this *MaxService) onSuccessPdpSubmission(item *PdpSubItem) error {
 	return nil
 }
 
-func (this *MaxService) waitForConfirmation(curBlockHeight uint64) error {
-	retry := 0
-	for {
-		if retry > MAX_RETRY_REQUEST_TIMES {
-			log.Errorf("[waitOneConfirmation] wait timeout")
-			return errors.New("wait timeout")
-		}
-		height, _ := this.getCurrentBlockHeightAndHash()
-		if uint64(height) >= curBlockHeight+2 {
-			log.Debugf("[waitOneConfirmation] wait ok")
-			return nil
-		}
-		retry++
-		time.Sleep(time.Duration(MAX_REQUEST_TIMEWAIT) * time.Second)
+func (this *MaxService) onFailedPdpSubmission(item *PdpSubItem, err error) error {
+	// delete the task if first prove error
+	if item.FirstProve {
+		return this.deleteAndNotify(item.FileHash, err.Error())
 	}
+	return nil
+}
+
+func (this *MaxService) pollForTxConfirmed(timeout time.Duration, txHash []byte) (bool, error) {
+	fsContract := this.chain.Native.Fs
+	return fsContract.PollForTxConfirmed(timeout, txHash)
 }
 
 type ExpireState int

@@ -5,6 +5,7 @@ import (
 	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
+	"time"
 )
 
 type PDPCalItem struct {
@@ -182,17 +183,25 @@ func (this *MaxService) processPdpSubmissionQueue() {
 			go func() {
 				defer this.submitting.Delete(fileHash)
 
-				err := this.doPdpSubmission(pdpSubItem)
+				txHash, err := this.doPdpSubmission(pdpSubItem)
 				if err != nil {
 					// TODO : on prove error need to delete the file
 					log.Errorf("doPdpSubmission for file %s error %s", fileHash, err)
-				} else {
-					err = this.waitForConfirmation(uint64(currentHeight))
+					err = this.onFailedPdpSubmission(pdpSubItem, err)
 					if err != nil {
-						log.Errorf("waitForConfirmation for file %s error %s", fileHash, err)
+						log.Errorf("onFailedPdpSubmission for file %s error %s", fileHash, err)
+					}
+				} else {
+					_, err := this.pollForTxConfirmed(POLL_TX_CONFIRMED_TIMEOUT*time.Second, txHash)
+					if err != nil {
+						log.Errorf("pollForTxConfirmed for file %s error %s", fileHash, err)
+						err = this.onFailedPdpSubmission(pdpSubItem, err)
+						if err != nil {
+							log.Errorf("onFailedPdpSubmission for file %s error %s", fileHash, err)
+						}
 					} else {
 						log.Debugf("prove success for fileHash : %s", fileHash)
-						err = this.onSuccessPdpSubmission(pdpSubItem)
+						err = this.onSuccessfulPdpSubmission(pdpSubItem)
 						if err != nil {
 							log.Errorf("onSuccessPdpSubmission for file %s error %s", fileHash, err)
 						}
