@@ -76,7 +76,7 @@ func AESEncryptFile(file string, password string, out string) error {
 		return err
 	}
 	stream := cipher.NewOFB(block, nonce)
-	outFile, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE, 0600)
+	outFile, err := os.OpenFile(out, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -92,6 +92,7 @@ func AESEncryptFile(file string, password string, out string) error {
 		tag = append(tag, v)
 	}
 	_, err = outFile.WriteAt(tag, 0)
+	outFile.Seek(int64(len(tag)), io.SeekStart)
 
 	writer := &cipher.StreamWriter{S: stream, W: outFile}
 	if _, err := io.Copy(writer, inFile); err != nil {
