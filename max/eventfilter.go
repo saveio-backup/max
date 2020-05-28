@@ -21,6 +21,8 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 
 	go func() {
 		var latestHeight uint32
+		var currHeight uint32
+		var err error
 
 		fsContractAddr := utils.OntFSContractAddress.ToHexString()
 
@@ -31,28 +33,30 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 		for {
 			select {
 			case <-ticker.C:
-				height, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
+				currHeight, _, err = this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
 				if err != nil {
 					log.Errorf("get block height and hash from chain error %s", err)
 					continue
 				}
 
-				if height <= latestHeight {
+				if currHeight <= latestHeight {
 					continue
 				}
 
-				latestHeight = height
-
-				// get events by height
-				events, err := this.getContractEvents(height, fsContractAddr)
-				if err != nil {
-					log.Errorf("getContractEvents error %s", err)
-					continue
+				for i := latestHeight + 1; i <= currHeight; i++ {
+					// get events by height
+					events, err := this.getContractEvents(i, fsContractAddr)
+					if err != nil {
+						log.Errorf("getContractEvents error %s", err)
+						continue
+					}
+					for _, event := range events {
+						this.processEvent(event)
+					}
 				}
 
-				for _, event := range events {
-					this.processEvent(event)
-				}
+				latestHeight = currHeight
+
 			case <-this.kill:
 				log.Debugf("stop event filter")
 				return
