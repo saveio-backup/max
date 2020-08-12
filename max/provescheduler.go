@@ -27,8 +27,7 @@ type BakParam struct {
 }
 
 type PDPResult struct {
-	MultiRes []byte
-	AddRes   string
+  ProveData []byte
 }
 
 func (this *MaxService) startPdpCalculationService() {

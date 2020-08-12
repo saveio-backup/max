@@ -1,6 +1,7 @@
 package max
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/saveio/themis/crypto/pdp"
+	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
+	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 
 	"github.com/saveio/themis/common/log"
@@ -352,13 +354,42 @@ func (this *MaxService) doPdpCalculation(item *PDPCalItem) (result *PDPResult, e
 		log.Errorf("[doPdpCalculation] GetFileAllCids for rootCid %s error : %s", rootCid.String(), err)
 		return nil, err
 	}
+	
+	prover :=pdp.NewPdp(0)
 
+	err = this.initProverWithTags(prover,fileHash,cids)	
+	if err != nil{
+		log.Errorf("[doPdpCalculation] initProverWithTags for rootCid %s error : %s", rootCid.String(), err)
+		return nil, err
+	}
+	
 	challenges, tags, blocks, err := this.prepareForPdpCal(item, blockHash, cids)
 	if err != nil {
 		return nil, err
 	}
 
-	return this.generateProve(item, blockHeight, blockHash, challenges, tags, blocks)
+	return this.generateProve(item, prover, challenges, tags, blocks)
+}
+
+func (this *MaxService) initProverWithTags(prover *pdp.Pdp, fileHash string, cids []*cid.Cid) error{
+	merkleNodes := make([]*pdp.MerkleNode,0)	
+	for i, blockCid := range cids{
+		tag, err :=this.GetTag(blockCid.String(),fileHash,uint64(i))	
+		if err != nil{
+			log.Errorf("[initProverWithTags] GetTag for file %s with index %d error: %s",fileHash,i,err)	
+			return fmt.Errorf("GetTag for file %s with index %d error: %s", fileHash,i, err)
+		}
+
+		node :=pdp.InitNodeWithData(tag, uint64(i))
+		merkleNodes = append(merkleNodes,node)
+	}	
+	
+	err :=prover.InitMerkleTree(merkleNodes)
+	if err != nil{
+		log.Errorf("[initProverWithTags] initMerkleTree for file %s error: %s",fileHash,err)
+		return fmt.Errorf("initMerkleTree for file %s error: %s", fileHash, err)
+	}
+	return nil
 }
 
 func (this *MaxService) prepareForPdpCal(item *PDPCalItem, blockHash common.Uint256, cids []*cid.Cid) (challenges []pdp.Challenge, tags [][]byte, blocks [][]byte, err error) {
@@ -375,8 +406,8 @@ func (this *MaxService) prepareForPdpCal(item *PDPCalItem, blockHash common.Uint
 	log.Debugf("[prepareForPdpCal] challenges : %v", challenges)
 	cidsLen := uint64(len(cids))
 	for _, c := range challenges {
-		index = uint64(c.Index - 1)
-		if index+1 > cidsLen {
+		index = uint64(c.Index)
+		if index >= cidsLen {
 			log.Errorf("[prepareForPdpCal] invalid index for fileHash %s index %d", fileHash, index)
 			return nil, nil, nil, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
 		}
@@ -399,32 +430,56 @@ func (this *MaxService) prepareForPdpCal(item *PDPCalItem, blockHash common.Uint
 
 	return challenges, tags, blocks, nil
 }
-func (this *MaxService) generateProve(item *PDPCalItem, blockHeight uint32, blockHash common.Uint256, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) (*PDPResult, error) {
+func (this *MaxService) generateProve(item *PDPCalItem, prover *pdp.Pdp,challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) (*PDPResult, error) {
 	fileHash := item.FileHash
 
-	byteTags := make([]pdp.Element, 0)
-	byteBlocks := make([]pdp.Block, 0)
+
+	pdpTags := make([]pdp.Tag, 0)
+	pdpBlocks := make([]pdp.Block, 0)
 
 	for _, tag := range tags {
-		byteTags = append(byteTags, pdp.Element{
-			Buffer: tag,
-		})
+		var tmp pdp.Tag
+		copy(tmp[:],tag[:])
+		pdpTags = append(pdpTags, tmp)
 	}
 	for _, block := range blocks {
-		byteBlocks = append(byteBlocks, pdp.Block{
-			Buffer: block,
-		})
+	    pdpBlocks = append(pdpBlocks,block)
 	}
 
-	if len(challenges) != len(byteTags) || len(challenges) != len(byteBlocks) {
+	if len(challenges) != len(pdpTags) || len(challenges) != len(pdpBlocks) {
 		log.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
 		return nil, fmt.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
 	}
+	
+	var proveParam fs.ProveParam
+	reader :=bytes.NewReader(item.FileInfo.FileProveParam)
+	err := proveParam.Deserialize(reader)
+	if err != nil{
+		log.Errorf("get prove param for file %s error %s", fileHash,err)
+		return nil, fmt.Errorf("get prove param for file %s error %s", fileHash,err)
+	}
 
-	multiRes, addRes := pdp.ProofGenerate(challenges, byteTags, byteBlocks)
+	proofs, mpath, err :=prover.GenerateProofWithMerklePath(0,pdpBlocks,proveParam.FileID, pdpTags,challenges)
+	if err != nil{
+		log.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
+		return nil, fmt.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
+	}
+	
+	proveData := &fs.ProveData{
+		Proofs:     proofs,
+		BlockNum:   uint64(len(pdpBlocks)),
+		Tags:       pdpTags,
+		MerklePath: mpath,
+	}
+	
+	buf := new(bytes.Buffer)
+	err = proveData.Serialize(buf)
+	if err != nil{
+		log.Errorf("ProveData serialize for file %s error %s", fileHash,err)
+		return nil, fmt.Errorf("ProveData serialize for file %s error %s", fileHash,err)
+	}
 	return &PDPResult{
-		MultiRes: multiRes,
-		AddRes:   addRes,
+	    ProveData:buf.Bytes(),
 	}, nil
 }
 
@@ -445,9 +500,9 @@ func (this *MaxService) doPdpSubmission(item *PdpSubItem) ([]byte, error) {
 	var txHash []byte
 
 	if bakParam.BakNum == 0 {
-		txHash, err = fsContract.FileProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height)
+		txHash, err = fsContract.FileProve(fileHash, pdpResult.ProveData, height)
 	} else {
-		txHash, err = fsContract.FileBackProve(fileHash, pdpResult.MultiRes, pdpResult.AddRes, height,
+		txHash, err = fsContract.FileBackProve(fileHash, pdpResult.ProveData, height,
 			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr)
 	}
 	if err != nil {
