@@ -8,28 +8,6 @@ import (
 	"time"
 )
 
-type PDPCalItem struct {
-	FileHash       string
-	FileInfo       *fs.FileInfo
-	NextChalHeight uint32
-	BlockHash      common.Uint256
-	NextSubHeight  uint32
-	BakParam       BakParam
-	ExpireState    ExpireState
-	FirstProve     bool
-}
-
-type BakParam struct {
-	LuckyNum          uint64
-	BakHeight         uint64
-	BakNum            uint64
-	BadNodeWalletAddr common.Address
-}
-
-type PDPResult struct {
-  ProveData []byte
-}
-
 func (this *MaxService) startPdpCalculationService() {
 	log.Debugf("start pdp calculation service")
 
@@ -46,6 +24,7 @@ func (this *MaxService) startPdpCalculationService() {
 
 // process item in the pdp calculation queue
 func (this *MaxService) processPdpCalculationQueue() {
+	var err error
 	for this.pdpQueue.Len() > 0 {
 		item := this.pdpQueue.FirstItem()
 		if item == nil {
@@ -53,15 +32,16 @@ func (this *MaxService) processPdpCalculationQueue() {
 			return
 		}
 
-		pdpCalItem := item.Value.(*PDPCalItem)
-		fileHash := pdpCalItem.FileHash
+		pdpItem := item.Value.(PDPItem)
 
-		pdpResult, err := this.doPdpCalculation(pdpCalItem)
+		err = pdpItem.doPdpCalculation()
 		if err != nil {
-			log.Errorf("do pdp calculation for file %s error %s", fileHash, err)
-			this.deleteAndNotify(pdpCalItem.FileHash, PROVE_TASK_REMOVAL_REASON_PDP_CALCULATION)
+			err = pdpItem.onFailedPdpCalculation(err)
+			if err != nil {
+				log.Errorf("onFailedPdpCalculation error: %s", err)
+			}
 		} else {
-			this.ScheduleForPdpSubmission(pdpCalItem, pdpResult)
+			this.ScheduleForPdpSubmission(pdpItem)
 		}
 
 		// NOTE: cannot use pop here, since queue might have been updated
@@ -99,47 +79,33 @@ func (this *MaxService) scheduleForProve(fileInfo *fs.FileInfo, bakParam *BakPar
 		log.Errorf("scheduleForProve error, fileInfo is nil")
 		return fmt.Errorf("scheduleForProve error, fileInfo is nil")
 	}
+
 	fileHash := string(fileInfo.FileHash)
+	pdpItem := &FilePDPItem{
+		FileHash:       fileHash,
+		FileInfo:       fileInfo,
+		NextChalHeight: nextPDPChalHeight,
+		BlockHash:      blockHash,
+		NextSubHeight:  nextPDPSubHeight,
+		BakParam:       *bakParam,
+		ExpireState:    expireState,
+		FirstProve:     firstProve,
+		max:            this,
+	}
+
 	item := &Item{
-		Key: fileHash,
-		Value: &PDPCalItem{
-			FileHash:       fileHash,
-			FileInfo:       fileInfo,
-			NextChalHeight: nextPDPChalHeight,
-			BlockHash:      blockHash,
-			NextSubHeight:  nextPDPSubHeight,
-			BakParam:       *bakParam,
-			ExpireState:    expireState,
-			FirstProve:     firstProve,
-		},
+		Key:      fileHash,
+		Value:    pdpItem,
 		Priority: int(nextPDPChalHeight),
 	}
 	return this.pdpQueue.Push(item)
 }
 
-type PdpSubItem struct {
-	FileHash       string
-	PdpResult      PDPResult
-	BakParam       BakParam
-	NextChalHeight uint32
-	NextSubHeight  uint32
-	FirstProve     bool
-	ExpireState    ExpireState
-}
-
-func (this *MaxService) ScheduleForPdpSubmission(item *PDPCalItem, pdpResult *PDPResult) error {
+func (this *MaxService) ScheduleForPdpSubmission(item PDPItem) error {
 	subItem := &Item{
-		Key: item.FileHash,
-		Value: &PdpSubItem{
-			FileHash:       item.FileHash,
-			PdpResult:      *pdpResult,
-			BakParam:       item.BakParam,
-			NextChalHeight: item.NextChalHeight,
-			NextSubHeight:  item.NextSubHeight,
-			FirstProve:     item.FirstProve,
-			ExpireState:    item.ExpireState,
-		},
-		Priority: int(item.NextSubHeight),
+		Key:      item.getItemKey(),
+		Value:    item,
+		Priority: int(item.getPdpSubmissionHeight()),
 		Index:    0,
 	}
 	return this.submitQueue.Push(subItem)
@@ -167,42 +133,42 @@ func (this *MaxService) processPdpSubmissionQueue() {
 			return
 		}
 
-		pdpSubItem := item.Value.(*PdpSubItem)
-		fileHash := pdpSubItem.FileHash
+		pdpItem := item.Value.(PDPItem)
+		itemKey := pdpItem.getItemKey()
 
 		currentHeight, _ := this.getCurrentBlockHeightAndHash()
-		if currentHeight >= pdpSubItem.NextSubHeight {
-			log.Debugf("time to submit file prove for file %s", fileHash)
+		if currentHeight >= pdpItem.getPdpSubmissionHeight() {
+			log.Debugf("time to submit file prove for item %s", itemKey)
 
 			// put in the submission map since the waitForConfirmation will block
 			// following submission if not run in a go routine, and make sure it
 			// can not be scheduled before submission finish
-			this.submitting.Store(fileHash, struct{}{})
+			this.submitting.Store(itemKey, struct{}{})
 
 			go func() {
-				defer this.submitting.Delete(fileHash)
+				defer this.submitting.Delete(itemKey)
 
-				txHash, err := this.doPdpSubmission(pdpSubItem)
+				txHash, err := pdpItem.doPdpSubmission()
 				if err != nil {
 					// TODO : on prove error need to delete the file
-					log.Errorf("doPdpSubmission for file %s error %s", fileHash, err)
-					err = this.onFailedPdpSubmission(pdpSubItem, err)
+					log.Errorf("doPdpSubmission for item %s error %s", itemKey, err)
+					err = pdpItem.onFailedPdpSubmission(err)
 					if err != nil {
-						log.Errorf("onFailedPdpSubmission for file %s error %s", fileHash, err)
+						log.Errorf("onFailedPdpSubmission for item %s error %s", itemKey, err)
 					}
 				} else {
 					_, err := this.pollForTxConfirmed(POLL_TX_CONFIRMED_TIMEOUT*time.Second, txHash)
 					if err != nil {
-						log.Errorf("pollForTxConfirmed for file %s error %s", fileHash, err)
-						err = this.onFailedPdpSubmission(pdpSubItem, err)
+						log.Errorf("pollForTxConfirmed for item %s error %s", itemKey, err)
+						err = pdpItem.onFailedPdpSubmission(err)
 						if err != nil {
-							log.Errorf("onFailedPdpSubmission for file %s error %s", fileHash, err)
+							log.Errorf("onFailedPdpSubmission for item %s error %s", itemKey, err)
 						}
 					} else {
-						log.Debugf("prove success for fileHash : %s", fileHash)
-						err = this.onSuccessfulPdpSubmission(pdpSubItem)
+						log.Debugf("prove success for item : %s", itemKey)
+						err = pdpItem.onSuccessfulPdpSubmission()
 						if err != nil {
-							log.Errorf("onSuccessPdpSubmission for file %s error %s", fileHash, err)
+							log.Errorf("onSuccessPdpSubmission for item %s error %s", itemKey, err)
 						}
 					}
 				}

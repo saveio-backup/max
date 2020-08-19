@@ -79,9 +79,11 @@ type ProveParam struct {
 	BakNum           uint64         `json:"baknum"`
 	FirstProveHeight uint64         `json:firstproveheight`
 	BrokenWalletAddr common.Address `json:"brokenwalletaddr"`
+	PDPParam         []byte         `json:"pdpparam"`
 }
 
-func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address, firstProveHeight uint64) *ProveParam {
+func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address,
+	firstProveHeight uint64, pdpParam []byte) *ProveParam {
 	return &ProveParam{
 		FileHash:         fileHashStr,
 		LuckyNum:         luckyNum,
@@ -89,6 +91,7 @@ func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, broke
 		BakNum:           bakNum,
 		FirstProveHeight: firstProveHeight,
 		BrokenWalletAddr: brokenWalletAddr,
+		PDPParam:         pdpParam,
 	}
 }
 

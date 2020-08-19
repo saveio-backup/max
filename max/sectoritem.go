@@ -1,0 +1,276 @@
+package max
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"github.com/saveio/max/max/sector"
+	fscontract "github.com/saveio/themis-go-sdk/fs"
+	"github.com/saveio/themis/common"
+	"github.com/saveio/themis/common/log"
+	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
+	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
+	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
+)
+
+type SectorPDPItem struct {
+	SectorId       uint64
+	ProveBlockNum  uint64
+	NextChalHeight uint32
+	NextSubHeight  uint32
+	BakParam       BakParam
+	BlockHash      common.Uint256
+	ProveData      []byte
+	max            *MaxService
+}
+
+func (this *SectorPDPItem) doPdpCalculation() error {
+	sector := this.getSectorManager().GetSectorBySectorId(this.SectorId)
+	if sector == nil {
+		return fmt.Errorf("doPdpCalculation, no sector found with id %d", this.SectorId)
+	}
+
+	// generate challenges
+	challenges := fs.GenChallenge(this.getAccountAddress(), this.BlockHash,
+		uint32(sector.GetTotalBlockCount()), uint32(sector.GetProveBlockNum()))
+
+	indexes := make([]uint64, 0)
+
+	for _, challenge := range challenges {
+		indexes = append(indexes, uint64(challenge.Index))
+	}
+
+	filePos, err := sector.GetFilePosBySectorIndexes(indexes)
+	if err != nil {
+		return fmt.Errorf("doPdpCalculation, GetFilePosBySectorIndexes for sector %d error %s", this.SectorId, err)
+	}
+
+	proofs, err := this.doPdpCalculationForSector(filePos, challenges)
+	if err != nil {
+		return fmt.Errorf("doPdpCalculation, doPdpCalculationForSector for sector %d error %s", this.SectorId, err)
+	}
+
+	this.ProveData = proofs
+	return nil
+}
+
+func (this *SectorPDPItem) onFailedPdpCalculation(err error) error {
+	log.Errorf("onFailedPdpCalculation for %s, error %s", this.getItemKey(), err)
+	return nil
+}
+
+func (this *SectorPDPItem) doPdpSubmission() (txHash []byte, err error) {
+	// TODO :call sector prove interface to submit proof for the sector
+	//fsContract := this.getFsContract()
+	return nil, nil
+}
+func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
+	// TODO: reSchedule here or use another task like file prove
+	return nil
+}
+func (this *SectorPDPItem) onFailedPdpSubmission(err error) error {
+	// TODO: may need to retry
+	return nil
+}
+func (this *SectorPDPItem) getItemKey() string {
+	return fmt.Sprintf("Secotr %d", this.SectorId)
+}
+func (this *SectorPDPItem) getPdpCalculationHeight() uint32 {
+	return this.NextChalHeight
+}
+func (this *SectorPDPItem) getPdpSubmissionHeight() uint32 {
+	return this.NextSubHeight
+}
+func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, challenges []pdp.Challenge) ([]byte, error) {
+	prover := pdp.NewPdp(0)
+
+	blocksForPdp := make([][]byte, 0)
+	tagsForPdp := make([][]byte, 0)
+	fileIdsForPdp := make([]pdp.FileID, 0)
+
+	curIndex := 0
+	for _, pos := range filePos {
+		fileHash := pos.FileHash
+		blockIndexes := pos.BlockIndexes
+		fileChallenges := make([]pdp.Challenge, 0)
+		for _, index := range blockIndexes {
+			challenge := pdp.Challenge{
+				Index: uint32(index),
+				Rand:  challenges[curIndex].Rand,
+			}
+			// NOTE: the file challenges has its index within file index range, needed for merkle path calculation
+			// for current pdp implementation, index is only used to select the blocks to be challenged, its value
+			// have no impact for the pdp calculation/verification
+			fileChallenges = append(fileChallenges, challenge)
+			curIndex++
+		}
+
+		//todo: get prove param from localDB or from network when cannot found locally
+		var proveParam *fs.ProveParam
+
+		rootCid, err := cid.Decode(fileHash)
+		if err != nil {
+			log.Errorf("[doPdpCalculationForSector] Decode for fileHash %s error : %s", fileHash, err)
+			return nil, err
+		}
+
+		max := this.getMaxService()
+		cids, err := max.GetFileAllCids(context.TODO(), rootCid)
+		if err != nil {
+			log.Errorf("[doPdpCalculationForSector] GetFileAllCids for fileHash %s error : %s", fileHash, err)
+			return nil, err
+		}
+
+		err = this.initProverWithTagsForFile(prover, fileHash, proveParam, cids)
+		if err != nil {
+			log.Errorf("[doPdpCalculationForSector] initProverWithTagsForFile for fileHash %s error : %s", fileHash, err)
+			return nil, err
+		}
+
+		fileIds, tags, blocks, err := this.prepareForPdpCal(prover, fileHash, proveParam, fileChallenges)
+		if err != nil {
+			return nil, err
+		}
+
+		fileIdsForPdp = append(fileIdsForPdp, fileIds...)
+		tagsForPdp = append(tagsForPdp, tags...)
+		blocksForPdp = append(blocksForPdp, blocks...)
+	}
+	return this.generateProve(prover, uint64(len(filePos)), fileIdsForPdp, challenges, tagsForPdp, blocksForPdp)
+}
+
+func (this *SectorPDPItem) initProverWithTagsForFile(prover *pdp.Pdp, fileHash string, proveParam *fs.ProveParam, cids []*cid.Cid) error {
+	merkleNodes := make([]*pdp.MerkleNode, 0)
+	for i, blockCid := range cids {
+		tag, err := this.getMaxService().GetTag(blockCid.String(), fileHash, uint64(i))
+		if err != nil {
+			log.Errorf("[initProverWithTags] GetTag for file %s with index %d error: %s", fileHash, i, err)
+			return fmt.Errorf("GetTag for file %s with index %d error: %s", fileHash, i, err)
+		}
+
+		node := pdp.InitNodeWithData(tag, uint64(i))
+		merkleNodes = append(merkleNodes, node)
+	}
+
+	err := prover.InitMerkleTreeForFile(proveParam.FileID, merkleNodes)
+	if err != nil {
+		log.Errorf("[initProverWithTagsForFile] initMerkleTree for file %s error: %s", fileHash, err)
+		return fmt.Errorf("initMerkleTree for file %s error: %s", fileHash, err)
+	}
+	return nil
+}
+func (this *SectorPDPItem) prepareForPdpCal(prover *pdp.Pdp, fileHash string, proveParam *fs.ProveParam, challenges []pdp.Challenge) (fileIDs []pdp.FileID, tags [][]byte, blocks [][]byte, err error) {
+	rootCid, err := cid.Decode(fileHash)
+	if err != nil {
+		log.Errorf("[prepareForPdpCal] Decode for fileHash %s error : %s", fileHash, err)
+		return nil, nil, nil, err
+	}
+
+	max := this.getMaxService()
+	cids, err := max.GetFileAllCids(context.TODO(), rootCid)
+	if err != nil {
+		log.Errorf("[prepareForPdpCal] GetFileAllCids for fileHash %s error : %s", fileHash, err)
+		return nil, nil, nil, err
+	}
+
+	fileId := proveParam.FileID
+
+	var blockCid *cid.Cid
+	var index uint64
+	var tag []byte
+
+	cidsLen := uint64(len(cids))
+	for _, c := range challenges {
+		index = uint64(c.Index)
+		if index >= cidsLen {
+			log.Errorf("[prepareForPdpCal] invalid index for fileHash %s index %d", fileHash, index)
+			return nil, nil, nil, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
+		}
+
+		blockCid = cids[index]
+		tag, err = max.GetTag(blockCid.String(), fileHash, index)
+		if err != nil {
+			log.Errorf("[prepareForPdpCal] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
+			return nil, nil, nil, err
+		}
+
+		tags = append(tags, tag)
+		blk, err := max.GetBlock(blockCid)
+		if err != nil {
+			log.Errorf("[prepareForPdpCal] GetBlock for block %s error : %s", blockCid.String(), err)
+			return nil, nil, nil, err
+		}
+		blocks = append(blocks, blk.RawData())
+
+		fileIDs = append(fileIDs, fileId)
+	}
+
+	return fileIDs, tags, blocks, nil
+}
+
+func (this *SectorPDPItem) generateProve(prover *pdp.Pdp, fileNum uint64, fileIds []pdp.FileID, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) ([]byte, error) {
+	pdpTags := make([]pdp.Tag, 0)
+	pdpBlocks := make([]pdp.Block, 0)
+
+	for _, tag := range tags {
+		var tmp pdp.Tag
+		copy(tmp[:], tag[:])
+		pdpTags = append(pdpTags, tmp)
+	}
+	for _, block := range blocks {
+		pdpBlocks = append(pdpBlocks, block)
+	}
+
+	if len(fileIds) != len(challenges) || len(fileIds) != len(pdpTags) || len(fileIds) != len(pdpBlocks) {
+		log.Errorf("length of fileIds, challenges, byteTags and byteBlocks no match for sector %d", this.SectorId)
+		return nil, fmt.Errorf("length of fileIds, challenges, byteTags and byteBlocks no match for sector %d", this.SectorId)
+	}
+
+	proofs, mpath, err := prover.GenerateProofWithMerklePath(0, pdpBlocks, fileIds, pdpTags, challenges)
+	if err != nil {
+		log.Errorf("GenerateProofWithMerklePath for sector %d error %s", this.SectorId, err)
+		return nil, fmt.Errorf("GenerateProofWithMerklePath for sector %d error %s", this.SectorId, err)
+	}
+
+	proveData := &fs.SectorProveData{
+		ProveFileNum: fileNum,
+		BlockNum:     uint64(len(blocks)),
+		Proofs:       proofs,
+		Tags:         pdpTags,
+		MerklePath:   mpath,
+	}
+
+	buf := new(bytes.Buffer)
+	err = proveData.Serialize(buf)
+	if err != nil {
+		log.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
+		return nil, fmt.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
+	}
+	return buf.Bytes(), nil
+}
+
+// from the challenge indexes
+func (this *SectorPDPItem) getFilesInSectorForPdpCalculation(indexes []uint64) ([]*sector.FilePos, error) {
+	return this.getSectorManager().GetFilePosBySectorIndexes(this.SectorId, indexes)
+}
+
+func (this *SectorPDPItem) getMaxService() *MaxService {
+	if this.max == nil {
+		panic("max service is nil")
+	}
+	return this.max
+}
+
+func (this *SectorPDPItem) getSectorManager() *sector.SectorManager {
+	return this.getMaxService().sectorManager
+}
+
+func (this *SectorPDPItem) getFsContract() *fscontract.Fs {
+	return this.getMaxService().chain.Native.Fs
+}
+
+func (this *SectorPDPItem) getAccountAddress() common.Address {
+	return this.getMaxService().getAccoutAddress()
+}
+
+var _ PDPItem = (*SectorPDPItem)(nil)

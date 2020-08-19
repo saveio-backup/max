@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/saveio/max/max/sector"
 	"io"
 	"os"
 	"path"
@@ -32,6 +33,7 @@ import (
 	//logging "gx/ipfs/QmRb5jh8z2E8hMGN2tkvs1yHynUanqnZ3UeKwgN1i9P1F8/go-log"
 	offline "gx/ipfs/QmWM5HhdG5ZQNyHQ5XhMdGmV9CvLpFynQfGpTxN2MEM7Lc/go-ipfs-exchange-offline"
 
+	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
 
 	fstore "github.com/saveio/max/filestore"
@@ -95,24 +97,26 @@ type ProveTaskRemovalNotify struct {
 }
 
 type MaxService struct {
-	blockstore   bstore.Blockstore // blockstore could be either real blockstore or filestore
-	datastore    repo.Datastore
-	filestore    *fstore.Filestore
-	filemanager  *fstore.FileManager
-	dag          ipld.DAGService
-	fsstore      *fsstore.FsStore
-	pinner       pin.Pinner
-	provetasks   *sync.Map
-	repo         repo.Repo
-	chain        *sdk.Chain
-	config       *FSConfig
-	rpcCache     *Cache
-	pdpQueue     *PriorityQueue
-	submitQueue  *PriorityQueue
-	submitting   *sync.Map
-	loadingtasks bool
-	kill         chan struct{}
-	Notify       chan *ProveTaskRemovalNotify
+	blockstore       bstore.Blockstore // blockstore could be either real blockstore or filestore
+	datastore        repo.Datastore
+	filestore        *fstore.Filestore
+	filemanager      *fstore.FileManager
+	dag              ipld.DAGService
+	fsstore          *fsstore.FsStore
+	pinner           pin.Pinner
+	provetasks       *sync.Map
+	sectorProveTasks *sync.Map
+	sectorManager    *sector.SectorManager
+	repo             repo.Repo
+	chain            *sdk.Chain
+	config           *FSConfig
+	rpcCache         *Cache
+	pdpQueue         *PriorityQueue
+	submitQueue      *PriorityQueue
+	submitting       *sync.Map
+	loadingtasks     bool
+	kill             chan struct{}
+	Notify           chan *ProveTaskRemovalNotify
 }
 
 type FSConfig struct {
@@ -261,16 +265,18 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	}
 
 	service := &MaxService{
-		blockstore:  blockstore,
-		datastore:   d,
-		filestore:   filestore,
-		filemanager: filemanager,
-		dag:         dag,
-		fsstore:     fsstore,
-		pinner:      pinner,
-		provetasks:  new(sync.Map),
-		repo:        repo,
-		chain:       chain,
+		blockstore:       blockstore,
+		datastore:        d,
+		filestore:        filestore,
+		filemanager:      filemanager,
+		dag:              dag,
+		fsstore:          fsstore,
+		pinner:           pinner,
+		provetasks:       new(sync.Map),
+		sectorProveTasks: new(sync.Map),
+		sectorManager:    sector.InitSectorManager(),
+		repo:             repo,
+		chain:            chain,
 		config: &FSConfig{
 			RepoRoot:  config.RepoRoot,
 			FsType:    config.FsType,
@@ -300,6 +306,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 
 		go service.startPdpCalculationService()
 		go service.startPdpSubmissionService()
+		go service.sectorManager.StartSectorManagerService()
 
 		err = service.loadPDPTasksOnStartup()
 		if err != nil {
@@ -1395,6 +1402,9 @@ func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string
 		return err
 	}
 	return nil
+}
+func (this *MaxService) getAccoutAddress() common.Address {
+	return this.chain.Native.Fs.DefAcc.Address
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {

@@ -1,16 +1,12 @@
 package max
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
-	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 
 	"github.com/saveio/themis/common/log"
@@ -88,8 +84,10 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 	return nil
 }
 
-func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address, firstProveHeight uint64) error {
-	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, firstProveHeight))
+func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64,
+	brokenWalletAddr common.Address, firstProveHeight uint64, pdpParam []byte) error {
+	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum,
+		brokenWalletAddr, firstProveHeight, pdpParam))
 	if err != nil {
 		log.Errorf("[saveProveTask] PutProveParam error: %v, for fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
 			err, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
@@ -328,253 +326,23 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	log.Debugf(" schedule file %s for pdp calculation", fileHash)
 	return nil
 }
-func (this *MaxService) doPdpCalculation(item *PDPCalItem) (result *PDPResult, err error) {
-	if item == nil || item.FileInfo == nil {
-		return nil, fmt.Errorf("pdp cal item is invalid")
-	}
-
-	fileHash := item.FileHash
-	fileInfo := item.FileInfo
-	bakParm := item.BakParam
-	blockHeight := item.NextChalHeight
-	blockHash := item.BlockHash
-
-	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
-		fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, blockHash.ToHexString(), blockHeight,
-		bakParm.LuckyNum, bakParm.BakHeight, bakParm.BakNum, bakParm.BadNodeWalletAddr.ToBase58())
-
-	// get all cids
-	rootCid, err := cid.Decode(fileHash)
-	if err != nil {
-		log.Errorf("[doPdpCalculation] Decode for fileHash %s error : %s", fileHash, err)
-		return nil, err
-	}
-	cids, err := this.GetFileAllCids(context.TODO(), rootCid)
-	if err != nil {
-		log.Errorf("[doPdpCalculation] GetFileAllCids for rootCid %s error : %s", rootCid.String(), err)
-		return nil, err
-	}
-	
-	prover :=pdp.NewPdp(0)
-
-	err = this.initProverWithTags(prover,fileHash,cids)	
-	if err != nil{
-		log.Errorf("[doPdpCalculation] initProverWithTags for rootCid %s error : %s", rootCid.String(), err)
-		return nil, err
-	}
-	
-	challenges, tags, blocks, err := this.prepareForPdpCal(item, blockHash, cids)
-	if err != nil {
-		return nil, err
-	}
-
-	return this.generateProve(item, prover, challenges, tags, blocks)
-}
-
-func (this *MaxService) initProverWithTags(prover *pdp.Pdp, fileHash string, cids []*cid.Cid) error{
-	merkleNodes := make([]*pdp.MerkleNode,0)	
-	for i, blockCid := range cids{
-		tag, err :=this.GetTag(blockCid.String(),fileHash,uint64(i))	
-		if err != nil{
-			log.Errorf("[initProverWithTags] GetTag for file %s with index %d error: %s",fileHash,i,err)	
-			return fmt.Errorf("GetTag for file %s with index %d error: %s", fileHash,i, err)
-		}
-
-		node :=pdp.InitNodeWithData(tag, uint64(i))
-		merkleNodes = append(merkleNodes,node)
-	}	
-	
-	err :=prover.InitMerkleTree(merkleNodes)
-	if err != nil{
-		log.Errorf("[initProverWithTags] initMerkleTree for file %s error: %s",fileHash,err)
-		return fmt.Errorf("initMerkleTree for file %s error: %s", fileHash, err)
-	}
-	return nil
-}
-
-func (this *MaxService) prepareForPdpCal(item *PDPCalItem, blockHash common.Uint256, cids []*cid.Cid) (challenges []pdp.Challenge, tags [][]byte, blocks [][]byte, err error) {
-	var blockCid *cid.Cid
-	var index uint64
-	var tag []byte
-
-	fileHash := item.FileHash
-	fsContract := this.chain.Native.Fs
-
-	challenges = fsContract.GenChallenge(fsContract.DefAcc.Address, blockHash,
-		item.FileInfo.FileBlockNum, item.FileInfo.ProveBlockNum)
-
-	log.Debugf("[prepareForPdpCal] challenges : %v", challenges)
-	cidsLen := uint64(len(cids))
-	for _, c := range challenges {
-		index = uint64(c.Index)
-		if index >= cidsLen {
-			log.Errorf("[prepareForPdpCal] invalid index for fileHash %s index %d", fileHash, index)
-			return nil, nil, nil, fmt.Errorf("file:%s, invalid index:%d", fileHash, index)
-		}
-
-		blockCid = cids[index]
-		tag, err = this.GetTag(blockCid.String(), fileHash, index)
-		if err != nil {
-			log.Errorf("[prepareForPdpCal] GetBlockAttr for blockHash %s fileHash %s index %d error : %s", blockCid.String(), fileHash, index, err)
-			return nil, nil, nil, err
-		}
-
-		tags = append(tags, tag)
-		blk, err := this.GetBlock(blockCid)
-		if err != nil {
-			log.Errorf("[prepareForPdpCal] GetBlock for block %s error : %s", blockCid.String(), err)
-			return nil, nil, nil, err
-		}
-		blocks = append(blocks, blk.RawData())
-	}
-
-	return challenges, tags, blocks, nil
-}
-func (this *MaxService) generateProve(item *PDPCalItem, prover *pdp.Pdp,challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) (*PDPResult, error) {
-	fileHash := item.FileHash
-
-
-	pdpTags := make([]pdp.Tag, 0)
-	pdpBlocks := make([]pdp.Block, 0)
-
-	for _, tag := range tags {
-		var tmp pdp.Tag
-		copy(tmp[:],tag[:])
-		pdpTags = append(pdpTags, tmp)
-	}
-	for _, block := range blocks {
-	    pdpBlocks = append(pdpBlocks,block)
-	}
-
-	if len(challenges) != len(pdpTags) || len(challenges) != len(pdpBlocks) {
-		log.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
-		return nil, fmt.Errorf("length of challenges, byteTags and byteBlocks no match for fileHash %s", fileHash)
-	}
-	
-	var proveParam fs.ProveParam
-	reader :=bytes.NewReader(item.FileInfo.FileProveParam)
-	err := proveParam.Deserialize(reader)
-	if err != nil{
-		log.Errorf("get prove param for file %s error %s", fileHash,err)
-		return nil, fmt.Errorf("get prove param for file %s error %s", fileHash,err)
-	}
-
-	proofs, mpath, err :=prover.GenerateProofWithMerklePath(0,pdpBlocks,proveParam.FileID, pdpTags,challenges)
-	if err != nil{
-		log.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
-		return nil, fmt.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
-	}
-	
-	proveData := &fs.ProveData{
-		Proofs:     proofs,
-		BlockNum:   uint64(len(pdpBlocks)),
-		Tags:       pdpTags,
-		MerklePath: mpath,
-	}
-	
-	buf := new(bytes.Buffer)
-	err = proveData.Serialize(buf)
-	if err != nil{
-		log.Errorf("ProveData serialize for file %s error %s", fileHash,err)
-		return nil, fmt.Errorf("ProveData serialize for file %s error %s", fileHash,err)
-	}
-	return &PDPResult{
-	    ProveData:buf.Bytes(),
-	}, nil
-}
-
-func (this *MaxService) doPdpSubmission(item *PdpSubItem) ([]byte, error) {
-	if item == nil {
-		log.Errorf("item for pdp submission is nil")
-		return nil, fmt.Errorf("item for pdp submission is nil")
-	}
-
-	fsContract := this.chain.Native.Fs
-
-	fileHash := item.FileHash
-	bakParam := item.BakParam
-	pdpResult := item.PdpResult
-	height := uint64(item.NextChalHeight)
-
-	var err error
-	var txHash []byte
-
-	if bakParam.BakNum == 0 {
-		txHash, err = fsContract.FileProve(fileHash, pdpResult.ProveData, height)
-	} else {
-		txHash, err = fsContract.FileBackProve(fileHash, pdpResult.ProveData, height,
-			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr)
-	}
-	if err != nil {
-		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
-		return nil, err
-	}
-
-	log.Debugf("call fileProve for file %s success with txHash %s", fileHash, getTxHashString(txHash))
-	return txHash, nil
-}
-func (this *MaxService) onSuccessfulPdpSubmission(item *PdpSubItem) error {
-	fsContract := this.chain.Native.Fs
-	fileHash := item.FileHash
-	height := item.NextChalHeight
-
-	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
-	if err != nil {
-		log.Errorf("get prove details after success prove error : %s", err)
-		// delete cached prove details to force getting prove details from contract for next prove
-		// when proveDetail not found, fileInfo may have been deleted
-		this.rpcCache.deleteProveDetails(fileHash)
-
-		return fmt.Errorf("get prove details after success prove error : %s", err)
-	} else {
-		log.Debugf("try add prove details to cache after success prove")
-		found := false
-		for _, detail := range proveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
-				found = true
-				break
-			}
-		}
-		if found {
-			log.Debugf("matching prove detail found, add prove detail to cache")
-			this.rpcCache.addProveDetails(fileHash, proveDetails)
-		} else {
-			log.Debugf("no matching prove detail found, delete cached prove details")
-			this.rpcCache.deleteProveDetails(fileHash)
-
-			return fmt.Errorf("no matching prove detail found, delete cached prove details")
-		}
-	}
-
-	if item.ExpireState == EXPIRE_LAST_PROVE {
-		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
-		this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
-		return nil
-	}
-
-	if item.FirstProve {
-		// saves the first prove height to check if fileinfo is deleted then added agian
-		err := this.saveProveTask(fileHash, 0, 0, 0, common.ADDRESS_EMPTY, uint64(height))
-		if err != nil {
-			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
-			return err
-		}
-		log.Debugf("save prove task for fileHash %s with first prove height %d after first prove", fileHash, height)
-	}
-	return nil
-}
-
-func (this *MaxService) onFailedPdpSubmission(item *PdpSubItem, err error) error {
-	// delete the task if first prove error
-	if item.FirstProve {
-		return this.deleteAndNotify(item.FileHash, err.Error())
-	}
-	return nil
-}
 
 func (this *MaxService) pollForTxConfirmed(timeout time.Duration, txHash []byte) (bool, error) {
 	fsContract := this.chain.Native.Fs
 	return fsContract.PollForTxConfirmed(timeout, txHash)
+}
+
+func (this *MaxService) isSectorProveTaskExist(sectorId uint64) bool {
+	if _, exist := this.sectorProveTasks.Load(sectorId); exist {
+		return true
+	}
+	return false
+}
+
+func (this *MaxService) addSectorProveTask(sectorId uint64, item PDPItem) error {
+	log.Debugf("addSectorProveTask for sectorId %d with item %v", sectorId, item)
+	this.sectorProveTasks.Store(sectorId, item)
+	return nil
 }
 
 type ExpireState int

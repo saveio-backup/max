@@ -2,6 +2,7 @@ package max
 
 import (
 	"fmt"
+	"github.com/saveio/max/max/sector"
 	"github.com/saveio/themis/common/log"
 	"github.com/saveio/themis/smartcontract/service/native/utils"
 	"reflect"
@@ -118,10 +119,35 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 		this.processDeleteFileEvent(parsedEvent)
 	case "deleteFiles":
 		this.processDeleteFilesEvent(parsedEvent)
+	case "createSector":
+		this.processCreateSectorEvent(parsedEvent)
 	default:
 		return
 	}
 	return
+}
+
+func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
+	walletAddr := event["walletAddr"].(string)
+	sectorId := event["sectorId"].(uint64)
+	size := event["size"].(uint64)
+	proveLevel := event["proveLevel"].(uint64)
+
+	address := this.getAccoutAddress()
+	if walletAddr == address.ToBase58() {
+		this.notifySectorEvent(&sector.SectorEvent{
+			Event:      sector.SECTOR_EVENT_CREATE,
+			SectorID:   sectorId,
+			ProveLevel: proveLevel,
+			Size:       size,
+		})
+	}
+}
+
+func (this *MaxService) notifySectorEvent(event *sector.SectorEvent) {
+	go func() {
+		this.sectorManager.NotifySectorEvent(event)
+	}()
 }
 
 func (this *MaxService) processDeleteFileEvent(event map[string]interface{}) {
@@ -185,6 +211,27 @@ func parseEvent(event map[string]interface{}) (map[string]interface{}, error) {
 				break
 			}
 			events[key] = walletAddr
+		case "sectorId":
+			sectorId, ok := value.(float64)
+			if !ok {
+				stopLoop = true
+				break
+			}
+			events[key] = uint64(sectorId)
+		case "size":
+			size, ok := value.(float64)
+			if !ok {
+				stopLoop = true
+				break
+			}
+			events[key] = uint64(size)
+		case "proveLevel":
+			proveLevel, ok := value.(float64)
+			if !ok {
+				stopLoop = true
+				break
+			}
+			events[key] = uint64(proveLevel)
 		}
 
 		if stopLoop {
