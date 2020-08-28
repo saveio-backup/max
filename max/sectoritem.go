@@ -14,21 +14,19 @@ import (
 )
 
 type SectorPDPItem struct {
-	SectorId       uint64
-	ProveBlockNum  uint64
-	NextChalHeight uint32
-	NextSubHeight  uint32
-	BakParam       BakParam
-	BlockHash      common.Uint256
-	ProveData      []byte
-	max            *MaxService
+	SectorId  uint64
+	Sector    *sector.Sector
+	BlockHash common.Uint256
+	ProveData []byte
+	max       *MaxService
 }
 
 func (this *SectorPDPItem) doPdpCalculation() error {
-	sector := this.getSectorManager().GetSectorBySectorId(this.SectorId)
-	if sector == nil {
-		return fmt.Errorf("doPdpCalculation, no sector found with id %d", this.SectorId)
+	if this.Sector == nil {
+		return fmt.Errorf("doPdpCalculation, no sector in the item")
 	}
+
+	sector := this.Sector
 
 	// generate challenges
 	challenges := fs.GenChallenge(this.getAccountAddress(), this.BlockHash,
@@ -60,27 +58,35 @@ func (this *SectorPDPItem) onFailedPdpCalculation(err error) error {
 }
 
 func (this *SectorPDPItem) doPdpSubmission() (txHash []byte, err error) {
-	// TODO :call sector prove interface to submit proof for the sector
-	//fsContract := this.getFsContract()
-	return nil, nil
+	return this.getFsContract().SectorProve(this.SectorId, uint64(this.getPdpCalculationHeight()), this.ProveData)
 }
+
 func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
-	// TODO: reSchedule here or use another task like file prove
+	// recalculate next challenge height
+	nextHeight := this.Sector.GetNextProveHeight() + this.Sector.GetProveInterval()
+	log.Debugf("onSuccessfulPdpSubmission, set nextProveHeight for sector %d as %d", this.SectorId, nextHeight)
+	this.Sector.SetNextProveHeight(nextHeight)
 	return nil
 }
+
 func (this *SectorPDPItem) onFailedPdpSubmission(err error) error {
 	// TODO: may need to retry
 	return nil
 }
+
 func (this *SectorPDPItem) getItemKey() string {
-	return fmt.Sprintf("Secotr %d", this.SectorId)
+	return getSectorIdString(this.SectorId)
 }
+
 func (this *SectorPDPItem) getPdpCalculationHeight() uint32 {
-	return this.NextChalHeight
+	return uint32(this.Sector.GetNextProveHeight())
 }
+
+// submission height same as calculation height
 func (this *SectorPDPItem) getPdpSubmissionHeight() uint32 {
-	return this.NextSubHeight
+	return uint32(this.Sector.GetNextProveHeight())
 }
+
 func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, challenges []pdp.Challenge) ([]byte, error) {
 	prover := pdp.NewPdp(0)
 
@@ -271,6 +277,10 @@ func (this *SectorPDPItem) getFsContract() *fscontract.Fs {
 
 func (this *SectorPDPItem) getAccountAddress() common.Address {
 	return this.getMaxService().getAccoutAddress()
+}
+
+func getSectorIdString(sectorId uint64) string {
+	return fmt.Sprintf("Secotr %d", sectorId)
 }
 
 var _ PDPItem = (*SectorPDPItem)(nil)

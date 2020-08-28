@@ -73,6 +73,7 @@ const (
 	MAX_REQUEST_TIMEWAIT                      = 5  // request time wait in second
 	POLL_TX_CONFIRMED_TIMEOUT                 = 15 // timeout to poll for tx confirmed
 	PROVE_FILE_INTERVAL                       = 10 // 10s proves
+	PROVE_SECTOR_INTERVAL                     = 60 // 10s proves
 	MAX_PROVE_FILE_ROUTINES                   = 10 // maximum of concurrent check prove files
 	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE        = 10 // default remove notify channel size
 	PDP_QUEUE_SIZE                            = 50 // pdp queue size for pdp calculation and submission
@@ -301,6 +302,12 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		err = service.StartEventFilter(MAX_REQUEST_TIMEWAIT)
 		if err != nil {
 			log.Errorf("[NewMaxService] StartEventFilter error", err)
+			return nil, err
+		}
+
+		err = service.sectorManager.LoadSectorsOnStartup()
+		if err != nil {
+			log.Errorf("[NewMaxService] LoadSectorOnStartup error", err)
 			return nil, err
 		}
 
@@ -1028,8 +1035,8 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 			}
 		}
 
-		// remove the file from provetasks
-		err = this.deleteProveTask(fileHash)
+		// remove the file from provetasks and db
+		err = this.deleteProveTask(fileHash, true)
 		if err != nil {
 			log.Errorf("[DeleteFile] delete prove task error: %s", err)
 		}

@@ -46,7 +46,47 @@ func InitSector(manager *SectorManager, id uint64, size uint64) *Sector {
 }
 
 func (this *Sector) GetSectorID() uint64 {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
 	return this.sectorId
+}
+
+func (this *Sector) GetNextProveHeight() uint64 {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+	return this.proveParam.nextProveHeight
+}
+
+func (this *Sector) SetNextProveHeight(height uint64) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	this.proveParam.nextProveHeight = height
+}
+
+func (this *Sector) GetLastProveHeight() uint64 {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+	return this.proveParam.lastProveHeight
+}
+func (this *Sector) SetLastProveHeight(height uint64) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	this.proveParam.lastProveHeight = height
+	if this.proveParam.firstProveHeight == 0 {
+		this.proveParam.firstProveHeight = height
+	}
+}
+
+func (this *Sector) GetFirstProveHeight() uint64 {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+	return this.proveParam.firstProveHeight
+}
+
+func (this *Sector) GetProveInterval() uint64 {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+	return this.proveParam.interval
 }
 
 func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSize uint64) error {

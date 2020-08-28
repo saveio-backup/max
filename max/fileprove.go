@@ -126,16 +126,18 @@ func (this *MaxService) notifyProveTaskDeletion(fileHash string, reason string) 
 	}()
 }
 
-func (this *MaxService) deleteProveTask(fileHash string) error {
+func (this *MaxService) deleteProveTask(fileHash string, removeDB bool) error {
 	log.Debugf("[deleteProveTask] delete task for fileHash : %s", fileHash)
 
 	if _, ok := this.provetasks.Load(fileHash); ok {
 		this.provetasks.Delete(fileHash)
 
-		err := this.fsstore.DeleteProveParam(fileHash)
-		if err != nil {
-			log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
-			return err
+		if removeDB {
+			err := this.fsstore.DeleteProveParam(fileHash)
+			if err != nil {
+				log.Errorf("[deleteProveTask] delete prove task for fileHash: %s error : %s", fileHash, err)
+				return err
+			}
 		}
 	} else {
 		log.Debugf("[deleteProveTask] task has already been deleted")
@@ -312,13 +314,25 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return fmt.Errorf("invalid expire state")
 		}
 	}
-	bakParam := &BakParam{
+	bakParam := BakParam{
 		LuckyNum:          luckyNum,
 		BakHeight:         bakHeight,
 		BakNum:            bakNum,
 		BadNodeWalletAddr: brokenWalletAddr,
 	}
-	err = this.scheduleForProve(fileInfo, bakParam, height, hash, height, expireState, first)
+
+	filePdpItem := &FilePDPItem{
+		FileHash:       fileHash,
+		FileInfo:       fileInfo,
+		NextChalHeight: height,
+		BlockHash:      hash,
+		NextSubHeight:  height,
+		BakParam:       bakParam,
+		ExpireState:    expireState,
+		FirstProve:     first,
+		max:            this,
+	}
+	err = this.scheduleForProve(filePdpItem)
 	if err != nil {
 		log.Errorf("failed to schedule for prove for file %s error %s", fileHash, err)
 		return err
@@ -330,19 +344,6 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 func (this *MaxService) pollForTxConfirmed(timeout time.Duration, txHash []byte) (bool, error) {
 	fsContract := this.chain.Native.Fs
 	return fsContract.PollForTxConfirmed(timeout, txHash)
-}
-
-func (this *MaxService) isSectorProveTaskExist(sectorId uint64) bool {
-	if _, exist := this.sectorProveTasks.Load(sectorId); exist {
-		return true
-	}
-	return false
-}
-
-func (this *MaxService) addSectorProveTask(sectorId uint64, item PDPItem) error {
-	log.Debugf("addSectorProveTask for sectorId %d with item %v", sectorId, item)
-	this.sectorProveTasks.Store(sectorId, item)
-	return nil
 }
 
 type ExpireState int

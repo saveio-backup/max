@@ -1,10 +1,7 @@
 package max
 
 import (
-	"fmt"
-	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
-	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	"time"
 )
 
@@ -53,50 +50,31 @@ func (this *MaxService) processPdpCalculationQueue() {
 	return
 }
 
-func (this *MaxService) IsScheduledForPdpCalculationOrSubmission(fileHash string) bool {
-	if this.pdpQueue.IndexByKey(fileHash) != -1 {
-		log.Debugf("file %s has already been scheduled for pdp calculation", fileHash)
+func (this *MaxService) IsScheduledForPdpCalculationOrSubmission(key string) bool {
+	if this.pdpQueue.IndexByKey(key) != -1 {
+		log.Debugf("item with key %s has already been scheduled for pdp calculation", key)
 		return true
 	}
-	if this.submitQueue.IndexByKey(fileHash) != -1 {
-		log.Debugf("file %s has already been scheduled for pdp submission", fileHash)
-		return true
-	}
-
-	if _, ok := this.submitting.Load(fileHash); ok {
-		log.Debugf("file %s is in submitting queue")
+	if this.submitQueue.IndexByKey(key) != -1 {
+		log.Debugf("item with key %s has already been scheduled for pdp submission", key)
 		return true
 	}
 
-	log.Debugf("file %s has not been scheduled for pdp calculation or submission", fileHash)
+	if _, ok := this.submitting.Load(key); ok {
+		log.Debugf("item with key %s is in submitting queue", key)
+		return true
+	}
+
+	log.Debugf("item with key %s has not been scheduled for pdp calculation or submission", key)
 	return false
 }
 
 // push to pdp queue to schedule for pdp calculation
-func (this *MaxService) scheduleForProve(fileInfo *fs.FileInfo, bakParam *BakParam, nextPDPChalHeight uint32, blockHash common.Uint256,
-	nextPDPSubHeight uint32, expireState ExpireState, firstProve bool) error {
-	if fileInfo == nil {
-		log.Errorf("scheduleForProve error, fileInfo is nil")
-		return fmt.Errorf("scheduleForProve error, fileInfo is nil")
-	}
-
-	fileHash := string(fileInfo.FileHash)
-	pdpItem := &FilePDPItem{
-		FileHash:       fileHash,
-		FileInfo:       fileInfo,
-		NextChalHeight: nextPDPChalHeight,
-		BlockHash:      blockHash,
-		NextSubHeight:  nextPDPSubHeight,
-		BakParam:       *bakParam,
-		ExpireState:    expireState,
-		FirstProve:     firstProve,
-		max:            this,
-	}
-
+func (this *MaxService) scheduleForProve(pdpItem PDPItem) error {
 	item := &Item{
-		Key:      fileHash,
+		Key:      pdpItem.getItemKey(),
 		Value:    pdpItem,
-		Priority: int(nextPDPChalHeight),
+		Priority: int(pdpItem.getPdpCalculationHeight()),
 	}
 	return this.pdpQueue.Push(item)
 }

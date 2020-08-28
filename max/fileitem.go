@@ -171,18 +171,19 @@ func (this *FilePDPItem) processForSectorProve() error {
 	sectorId := sector.GetSectorID()
 	// if sector prove task not exist, create a sector prove task
 	if !max.isSectorProveTaskExist(sectorId) {
-		err := max.addSectorProveTask(sectorId, &SectorPDPItem{
-			SectorId:       sectorId,
-			ProveBlockNum:  0,
-			NextChalHeight: 0,
-			NextSubHeight:  0,
-		})
+		err := max.addSectorProveTask(sectorId)
 		if err != nil {
 			return err
 		}
-
-		//max.saveProveTask()
 		log.Debugf("addProveTask for sector %d", sectorId)
+	}
+
+	// remove the task no more file prove needed after first success file prove
+	// keep prove param in db for sector prove
+	err = max.deleteProveTask(fileHash, false)
+	if err != nil {
+		log.Errorf("processForSectorProve, deleteProveTask for file %s error %s", fileHash, err)
+		return nil
 	}
 	return nil
 }
