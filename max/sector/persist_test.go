@@ -41,18 +41,18 @@ func TestSectorPersist(t *testing.T) {
 		sectorIdStr := strconv.Itoa(int(sector.sectorId))
 		sectorIdStr = sectorIdStr + "-"
 
-		fileList := []*DBSectorFileInfo{
-			&DBSectorFileInfo{
+		fileList := []*SectorFileInfo{
+			&SectorFileInfo{
 				FileHash:   sectorIdStr + "file1",
 				BlockCount: SECTOR_BLOCK_COUNT / 2,
 				BlockSize:  SECTOR_BLOCK_SIZE,
 			},
-			&DBSectorFileInfo{
+			&SectorFileInfo{
 				FileHash:   sectorIdStr + "file2",
 				BlockCount: SECTOR_BLOCK_COUNT / 4,
 				BlockSize:  SECTOR_BLOCK_SIZE,
 			},
-			&DBSectorFileInfo{
+			&SectorFileInfo{
 				FileHash:   sectorIdStr + "file3",
 				BlockCount: SECTOR_BLOCK_COUNT / 4,
 				BlockSize:  SECTOR_BLOCK_SIZE,
@@ -64,6 +64,19 @@ func TestSectorPersist(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+		}
+
+		err = sector.SetFirstProveHeight(100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = sector.SetLastProveHeight(200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = sector.SetNextProveHeight(300)
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -85,7 +98,7 @@ func printSectorManager(m *SectorManager, t *testing.T) {
 		t.Logf("sector data %+v\n", sector)
 
 		for _, file := range sector.fileList {
-			t.Logf("file %s, block count %d, block size %d\n", file.fileHash, file.blockCount, file.blockSize)
+			t.Logf("file %s, block count %d, block size %d\n", file.FileHash, file.BlockCount, file.BlockSize)
 		}
 	}
 }

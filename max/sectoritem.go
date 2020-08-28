@@ -65,7 +65,16 @@ func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
 	// recalculate next challenge height
 	nextHeight := this.Sector.GetNextProveHeight() + this.Sector.GetProveInterval()
 	log.Debugf("onSuccessfulPdpSubmission, set nextProveHeight for sector %d as %d", this.SectorId, nextHeight)
-	this.Sector.SetNextProveHeight(nextHeight)
+
+	err := this.Sector.SetLastProveHeight(this.Sector.GetNextProveHeight())
+	if err != nil {
+		return nil
+	}
+
+	err = this.Sector.SetNextProveHeight(nextHeight)
+	if err != nil {
+		return nil
+	}
 	return nil
 }
 

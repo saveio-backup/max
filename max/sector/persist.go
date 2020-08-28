@@ -3,6 +3,8 @@ package sector
 import (
 	"encoding/json"
 	"fmt"
+	ldb "github.com/saveio/max/max/leveldbstore"
+	"github.com/saveio/themis/common/log"
 	"strconv"
 )
 
@@ -14,8 +16,9 @@ type DB interface {
 }
 
 const (
-	SECTOR_LIST_KEY  = "sectorlist:"
-	SECTOR_FILE_LIST = "sectorfilelist:"
+	SECTOR_LIST_KEY        = "sectorlist:"
+	SECTOR_FILE_LIST_KEY   = "sectorfilelist:"
+	SECTOR_PROVE_PARAM_KEY = "sectorproveparam:"
 )
 
 type DBSectorInfo struct {
@@ -30,7 +33,7 @@ type DBSectorList struct {
 
 // need to run with lock to for data consistency
 func (this *SectorManager) saveSectorList() error {
-	if this.isLoading {
+	if this.isOnStartup() {
 		return nil
 	}
 
@@ -58,6 +61,9 @@ func (this *SectorManager) saveSectorList() error {
 func (this *SectorManager) loadSectorList() (*DBSectorList, error) {
 	data, err := this.db.GetData(genSectorListKey())
 	if err != nil {
+		if err == ldb.ErrNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -70,18 +76,12 @@ func (this *SectorManager) loadSectorList() (*DBSectorList, error) {
 	return sectorList, nil
 }
 
-type DBSectorFileInfo struct {
-	FileHash   string `json:"filehash"`
-	BlockCount uint64 `json:"blockcount"`
-	BlockSize  uint64 `json:"blocksize"`
-}
-
 type DBSectorFileList struct {
-	SectorFileInfos []*DBSectorFileInfo `json:"sectorfileinfos"`
+	SectorFileInfos []*SectorFileInfo `json:"sectorfileinfos"`
 }
 
 func (this *SectorManager) saveSectorFileList(sectorId uint64) error {
-	if this.isLoading {
+	if this.isOnStartup() {
 		return nil
 	}
 
@@ -90,12 +90,12 @@ func (this *SectorManager) saveSectorFileList(sectorId uint64) error {
 		return fmt.Errorf("saveSectorFileList, no sector found with id %d", sectorId)
 	}
 
-	sectorFileInfos := make([]*DBSectorFileInfo, 0)
+	sectorFileInfos := make([]*SectorFileInfo, 0)
 	for _, file := range sector.fileList {
-		sectorFileInfos = append(sectorFileInfos, &DBSectorFileInfo{
-			FileHash:   file.fileHash,
-			BlockCount: file.blockCount,
-			BlockSize:  file.blockSize,
+		sectorFileInfos = append(sectorFileInfos, &SectorFileInfo{
+			FileHash:   file.FileHash,
+			BlockCount: file.BlockCount,
+			BlockSize:  file.BlockSize,
 		})
 	}
 
@@ -110,6 +110,9 @@ func (this *SectorManager) saveSectorFileList(sectorId uint64) error {
 func (this *SectorManager) loadSectorFileList(sectorId uint64) (*DBSectorFileList, error) {
 	data, err := this.db.GetData(genSectorFileListKey(sectorId))
 	if err != nil {
+		if err == ldb.ErrNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -121,6 +124,42 @@ func (this *SectorManager) loadSectorFileList(sectorId uint64) (*DBSectorFileLis
 	return sectorFileList, nil
 }
 
+func (this *SectorManager) saveSectorProveParam(sectorId uint64) error {
+	if this.isOnStartup() {
+		return nil
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		return fmt.Errorf("saveSectorProveParam, no sector found with id %d", sectorId)
+	}
+
+	data, err := json.Marshal(sector.proveParam)
+	if err != nil {
+		return err
+	}
+
+	return this.db.PutData(genSectorProveParamKey(sectorId), data)
+}
+
+func (this *SectorManager) loadSectorProveParam(sectorId uint64) (*SectorProveParam, error) {
+	data, err := this.db.GetData(genSectorProveParamKey(sectorId))
+	if err != nil {
+		if err == ldb.ErrNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	sectorProveParam := new(SectorProveParam)
+
+	err = json.Unmarshal(data, sectorProveParam)
+	if err != nil {
+		return nil, err
+	}
+	return sectorProveParam, nil
+}
+
 func (this *SectorManager) LoadSectorsOnStartup() error {
 	this.isLoading = true
 
@@ -130,19 +169,52 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 
 	sectorList, err := this.loadSectorList()
 	if err != nil {
+		log.Debugf("LoadSectorsOnStartup, loadSectorList error %s", err)
 		return err
+	}
+
+	if sectorList == nil {
+		log.Debugf("LoadSectorsOnStartup, sectorList is nil")
+		return nil
 	}
 
 	// load all the sectors and create sector
 	for _, sectorInfo := range sectorList.SectorInfos {
-		_, err = this.CreateSector(sectorInfo.SectorId, sectorInfo.ProveLevel, sectorInfo.Size)
+		sectorId := sectorInfo.SectorId
+		sector, err := this.CreateSector(sectorId, sectorInfo.ProveLevel, sectorInfo.Size)
+		if err != nil {
+			log.Debugf("LoadSectorsOnStartup, createSector err %s", err)
+			return err
+		}
+
+		proveParam, err := this.loadSectorProveParam(sectorId)
+		if err != nil || proveParam == nil {
+			log.Debugf("LoadSectorsOnStartup, loadSectorProveParam err %s", err)
+			return err
+		}
+
+		err = sector.SetFirstProveHeight(proveParam.FirstProveHeight)
 		if err != nil {
 			return err
 		}
 
-		fileList, err := this.loadSectorFileList(sectorInfo.SectorId)
+		err = sector.SetLastProveHeight(proveParam.LastProveHeight)
 		if err != nil {
 			return err
+		}
+
+		err = sector.SetNextProveHeight(proveParam.NextProveHeight)
+		if err != nil {
+			return err
+		}
+
+		fileList, err := this.loadSectorFileList(sectorId)
+		if err != nil {
+			return err
+		}
+
+		if fileList == nil {
+			continue
 		}
 
 		// load file list in the sector and add file to sector
@@ -156,10 +228,21 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 	return nil
 }
 
+func (this *SectorManager) isOnStartup() bool {
+	if this.isLoading {
+		return true
+	}
+	return false
+}
+
 func genSectorListKey() string {
 	return SECTOR_LIST_KEY
 }
 
 func genSectorFileListKey(sectorId uint64) string {
-	return SECTOR_FILE_LIST + strconv.Itoa(int(sectorId))
+	return SECTOR_FILE_LIST_KEY + strconv.Itoa(int(sectorId))
+}
+
+func genSectorProveParamKey(sectorId uint64) string {
+	return SECTOR_PROVE_PARAM_KEY + strconv.Itoa(int(sectorId))
 }

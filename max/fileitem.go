@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/saveio/max/max/sector"
 	fscontract "github.com/saveio/themis-go-sdk/fs"
 	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
@@ -23,6 +24,7 @@ type FilePDPItem struct {
 	FirstProve     bool
 	PdpResult      []byte
 	max            *MaxService
+	sectorId       uint64
 }
 
 func (this *FilePDPItem) doPdpCalculation() error {
@@ -76,14 +78,26 @@ func (this *FilePDPItem) doPdpSubmission() ([]byte, error) {
 	proveData := this.PdpResult
 	height := uint64(this.NextChalHeight)
 
-	var err error
+	sector, err := this.assignSectorForFile()
+	if err != nil {
+		return nil, err
+	}
+
+	sectorId := sector.GetSectorID()
+	this.sectorId = sectorId
+
+	log.Debugf("file %s has been assign to sector %d", fileHash, sectorId)
+
+	// lock the sector for the case where
+	sector.LockSector()
+
 	var txHash []byte
 
 	if bakParam.BakNum == 0 {
-		txHash, err = fsContract.FileProve(fileHash, proveData, height)
+		txHash, err = fsContract.FileProve(fileHash, proveData, height, sectorId)
 	} else {
 		txHash, err = fsContract.FileBackProve(fileHash, proveData, height,
-			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr)
+			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr, sectorId)
 	}
 	if err != nil {
 		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
@@ -154,7 +168,7 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 	return nil
 }
 
-func (this *FilePDPItem) processForSectorProve() error {
+func (this *FilePDPItem) assignSectorForFile() (*sector.Sector, error) {
 	max := this.getMaxService()
 
 	proveLevel := this.FileInfo.ProveLevel
@@ -164,11 +178,31 @@ func (this *FilePDPItem) processForSectorProve() error {
 
 	sector, err := max.sectorManager.AddFile(proveLevel, fileHash, blockCount, blockSize)
 	if err != nil {
-		log.Errorf("addFileToSector for file %s error %s", fileHash, err)
+		log.Errorf("assignSectorForFile for file %s error %s", fileHash, err)
+		return nil, err
+	}
+	return sector, nil
+}
+
+func (this *FilePDPItem) processForSectorProve() error {
+	max := this.getMaxService()
+
+	sectorId := this.sectorId
+	fileHash := this.FileHash
+
+	sector := max.sectorManager.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		panic("sector not exist")
+	}
+
+	sector.UnLockSector()
+
+	err := sector.SetNextProveHeight(uint64(this.NextChalHeight) + sector.GetProveInterval())
+	if err != nil {
+		log.Errorf("addFileToSector setNextProveHeight for sector %d error %s", sectorId, err)
 		return err
 	}
 
-	sectorId := sector.GetSectorID()
 	// if sector prove task not exist, create a sector prove task
 	if !max.isSectorProveTaskExist(sectorId) {
 		err := max.addSectorProveTask(sectorId)
@@ -189,9 +223,17 @@ func (this *FilePDPItem) processForSectorProve() error {
 }
 
 func (this *FilePDPItem) onFailedPdpSubmission(err error) error {
+	max := this.getMaxService()
+
+	sector := max.sectorManager.GetSectorBySectorId(this.sectorId)
+	if sector == nil {
+		panic("sector not exist")
+	}
+
+	sector.UnLockSector()
 	// delete the task if first prove error
 	if this.FirstProve {
-		return this.getMaxService().deleteAndNotify(this.FileHash, err.Error())
+		return max.deleteAndNotify(this.FileHash, err.Error())
 	}
 	return nil
 }
@@ -332,6 +374,20 @@ func (this *FilePDPItem) generateProve(prover *pdp.Pdp, proveParam *fs.ProvePara
 		log.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
 		return nil, fmt.Errorf("GenerateProofWithMerklePath for file %s error %s", fileHash, err)
 	}
+
+	for _, path := range mpath {
+		fmt.Println("printPath")
+		path.PrintPath()
+	}
+
+	p2 := pdp.NewPdp(0)
+	err = p2.VerifyProofWithMerklePathForFile(0, proofs, proveParam.FileID, pdpTags, challenges, mpath, proveParam.RootHash)
+	if err != nil {
+		log.Errorf("self verify pdp error %s", err)
+		return nil, err
+	}
+
+	log.Debugf("self verify pdp success")
 
 	proveData := &fs.ProveData{
 		Proofs:     proofs,

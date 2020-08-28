@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	MIN_SECTOR_SIZE = 4 * 1024 * 1024 * 1024 // 4G as min sector size
+	MIN_SECTOR_SIZE = 1024 * 1024 // 1G as min sector size, uint is KB
 )
 
 type SectorManager struct {
@@ -105,12 +105,16 @@ func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size
 	}
 
 	sector = InitSector(this, sectorId, size)
-	sector.proveParam.proveLevel = proveLevel
 	sectors[sector.sectorId] = sector
 
 	this.sectorIdMap[sectorId] = sector
 
-	err := this.saveSectorList()
+	err := this.setProveParam(sector, proveLevel)
+	if err != nil {
+		log.Errorf("[CreateSector] setProveParm error %s", err)
+		return nil, err
+	}
+	err = this.saveSectorList()
 	if err != nil {
 		log.Errorf("[CreateSector] saveSectorList error %s", err)
 		return nil, err
@@ -269,4 +273,25 @@ func (this *SectorManager) GetFilePosBySectorIndexes(sectorId uint64, indexes []
 		return nil, fmt.Errorf("GetFilesBySectorIndexes, no sector found with id %d", sectorId)
 	}
 	return sector.GetFilePosBySectorIndexes(indexes)
+}
+
+func (this *SectorManager) setProveParam(sector *Sector, proveLevel uint64) error {
+	sector.proveParam.ProveLevel = proveLevel
+	sector.proveParam.Interval = getIntervalByProveLevel(proveLevel)
+	sector.proveParam.ProveBlockNum = fs.SECTOR_PROVE_BLOCK_NUM
+
+	return this.saveSectorProveParam(sector.sectorId)
+}
+
+func getIntervalByProveLevel(proveLevel uint64) uint64 {
+	switch proveLevel {
+	case fs.PROVE_LEVEL_HIGH:
+		return fs.PROVE_PERIOD_HIGHT
+	case fs.PROVE_LEVEL_MEDIEUM:
+		return fs.PROVE_PERIOD_MEDIEUM
+	case fs.PROVE_LEVEL_LOW:
+		return fs.PROVE_PERIOD_LOW
+	default:
+		return fs.DEFAULT_PROVE_PERIOD
+	}
 }

@@ -9,18 +9,18 @@ import (
 )
 
 type SectorFileInfo struct {
-	fileHash   string
-	blockCount uint64
-	blockSize  uint64
+	FileHash   string `json:"filehash"`
+	BlockCount uint64 `json:"blockcount"`
+	BlockSize  uint64 `json:"blocksize"`
 }
 
 type SectorProveParam struct {
-	proveLevel       uint64 // now prove level will decide the interval
-	interval         uint64
-	proveBlockNum    uint64
-	firstProveHeight uint64
-	lastProveHeight  uint64
-	nextProveHeight  uint64
+	ProveLevel       uint64 // now prove level will decide the interval
+	Interval         uint64
+	ProveBlockNum    uint64
+	FirstProveHeight uint64
+	LastProveHeight  uint64
+	NextProveHeight  uint64
 }
 
 type Sector struct {
@@ -54,39 +54,68 @@ func (this *Sector) GetSectorID() uint64 {
 func (this *Sector) GetNextProveHeight() uint64 {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
-	return this.proveParam.nextProveHeight
+	return this.proveParam.NextProveHeight
 }
 
-func (this *Sector) SetNextProveHeight(height uint64) {
+func (this *Sector) SetNextProveHeight(height uint64) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
-	this.proveParam.nextProveHeight = height
+
+	curHeight := this.proveParam.NextProveHeight
+	if height < curHeight {
+		log.Errorf("height %d is smaller than next prove height %d", height, curHeight)
+		return fmt.Errorf("height %d is smaller than next prove height %d", height, curHeight)
+	}
+	this.proveParam.NextProveHeight = height
+	return this.saveProveParam()
 }
 
 func (this *Sector) GetLastProveHeight() uint64 {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
-	return this.proveParam.lastProveHeight
+	return this.proveParam.LastProveHeight
 }
-func (this *Sector) SetLastProveHeight(height uint64) {
+func (this *Sector) SetLastProveHeight(height uint64) error {
 	this.lock.Lock()
-	defer this.lock.Unlock()
-	this.proveParam.lastProveHeight = height
-	if this.proveParam.firstProveHeight == 0 {
-		this.proveParam.firstProveHeight = height
+
+	curHeight := this.proveParam.LastProveHeight
+	if height < curHeight {
+		log.Errorf("height %d is smaller than last prove height %d", height, curHeight)
+		return fmt.Errorf("height %d is smaller than last prove height %d", height, curHeight)
 	}
+	this.proveParam.LastProveHeight = height
+
+	err := this.saveProveParam()
+	if err != nil {
+		return err
+	}
+
+	this.lock.Unlock()
+
+	if this.proveParam.FirstProveHeight == 0 {
+		return this.SetFirstProveHeight(height)
+	}
+	return nil
 }
 
 func (this *Sector) GetFirstProveHeight() uint64 {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
-	return this.proveParam.firstProveHeight
+	return this.proveParam.FirstProveHeight
+}
+
+func (this *Sector) SetFirstProveHeight(height uint64) error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	this.proveParam.FirstProveHeight = height
+
+	return this.saveProveParam()
 }
 
 func (this *Sector) GetProveInterval() uint64 {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
-	return this.proveParam.interval
+	return this.proveParam.Interval
 }
 
 func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSize uint64) error {
@@ -104,9 +133,9 @@ func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSiz
 	defer this.lock.Unlock()
 
 	this.fileList = append(this.fileList, &SectorFileInfo{
-		fileHash:   fileHash,
-		blockCount: blockCount,
-		blockSize:  blockSize,
+		FileHash:   fileHash,
+		BlockCount: blockCount,
+		BlockSize:  blockSize,
 	})
 	this.fileMap[fileHash] = struct{}{}
 	this.totalFileSize += fileSize
@@ -132,9 +161,9 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 
 	for i := 0; i < len(this.fileList); i++ {
 		file := this.fileList[i]
-		if strings.Compare(file.fileHash, fileHash) == 0 {
-			this.totalFileSize = this.totalFileSize - file.blockCount*file.blockSize
-			this.totalBlockCount = this.totalBlockCount - file.blockCount
+		if strings.Compare(file.FileHash, fileHash) == 0 {
+			this.totalFileSize = this.totalFileSize - file.BlockCount*file.BlockSize
+			this.totalBlockCount = this.totalBlockCount - file.BlockCount
 			this.fileList = append(this.fileList[:i], this.fileList[i+1:]...)
 			break
 		}
@@ -163,18 +192,7 @@ func (this *Sector) GetSectorRemainingSize() uint64 {
 }
 
 func (this *Sector) GetProveLevel() uint64 {
-	return this.proveParam.proveLevel
-}
-
-func (this *Sector) UpdateLastProveHeight(height uint64) error {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-	if height <= this.proveParam.lastProveHeight {
-		log.Errorf("updateLastProveHeight error, height %d is no larger than last prove height %d", height, this.proveParam.lastProveHeight)
-		return fmt.Errorf("updateLastProveHeight error, height %d is no larger than last prove height %d", height, this.proveParam.lastProveHeight)
-	}
-	this.proveParam.lastProveHeight = height
-	return nil
+	return this.proveParam.ProveLevel
 }
 
 func (this *Sector) GetTotalBlockCount() uint64 {
@@ -182,7 +200,7 @@ func (this *Sector) GetTotalBlockCount() uint64 {
 }
 
 func (this *Sector) GetProveBlockNum() uint64 {
-	return this.proveParam.proveBlockNum
+	return this.proveParam.ProveBlockNum
 }
 
 type FilePos struct {
@@ -215,13 +233,13 @@ func (this *Sector) GetFilePosBySectorIndexes(indexes []uint64) ([]*FilePos, err
 
 	filePos := make([]*FilePos, 0)
 	for _, fileInfo := range this.fileList {
-		blockCount := fileInfo.blockCount
+		blockCount := fileInfo.BlockCount
 
 		start := offset
 		end := offset + blockCount - 1
 
 		pos := &FilePos{
-			FileHash:     fileInfo.fileHash,
+			FileHash:     fileInfo.FileHash,
 			BlockIndexes: make([]uint64, 0),
 		}
 		for i := curIndex; i < len(indexes); i++ {
@@ -254,4 +272,19 @@ func (this *Sector) saveFileList() error {
 		return nil
 	}
 	return this.manager.saveSectorFileList(this.sectorId)
+}
+
+func (this *Sector) saveProveParam() error {
+	if this.manager == nil {
+		return nil
+	}
+	return this.manager.saveSectorProveParam(this.sectorId)
+}
+
+func (this *Sector) LockSector() {
+	this.lock.Lock()
+}
+
+func (this *Sector) UnLockSector() {
+	this.lock.Unlock()
 }
