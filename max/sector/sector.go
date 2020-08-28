@@ -25,6 +25,7 @@ type SectorProveParam struct {
 
 type Sector struct {
 	lock            sync.RWMutex
+	manager         *SectorManager
 	sectorId        uint64
 	sectorSize      uint64
 	fileList        []*SectorFileInfo // TODO: may not be enough just to know the fileHash, some info maybe needed like when to expire
@@ -34,8 +35,9 @@ type Sector struct {
 	proveParam      SectorProveParam
 }
 
-func InitSector(id uint64, size uint64) *Sector {
+func InitSector(manager *SectorManager, id uint64, size uint64) *Sector {
 	return &Sector{
+		manager:    manager,
 		sectorId:   id,
 		sectorSize: size,
 		fileList:   make([]*SectorFileInfo, 0),
@@ -59,6 +61,8 @@ func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSiz
 	}
 
 	this.lock.Lock()
+	defer this.lock.Unlock()
+
 	this.fileList = append(this.fileList, &SectorFileInfo{
 		fileHash:   fileHash,
 		blockCount: blockCount,
@@ -67,7 +71,11 @@ func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSiz
 	this.fileMap[fileHash] = struct{}{}
 	this.totalFileSize += fileSize
 	this.totalBlockCount += blockCount
-	this.lock.Unlock()
+
+	err := this.saveFileList()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -80,6 +88,7 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 	}
 
 	this.lock.Lock()
+	defer this.lock.Unlock()
 
 	for i := 0; i < len(this.fileList); i++ {
 		file := this.fileList[i]
@@ -92,7 +101,11 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 	}
 	delete(this.fileMap, fileHash)
 
-	this.lock.Unlock()
+	err := this.saveFileList()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -194,4 +207,11 @@ func (this *Sector) GetFilePosBySectorIndexes(indexes []uint64) ([]*FilePos, err
 	}
 
 	return filePos, nil
+}
+
+func (this *Sector) saveFileList() error {
+	if this.manager == nil {
+		return nil
+	}
+	return this.manager.saveSectorFileList(this.sectorId)
 }

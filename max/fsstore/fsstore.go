@@ -13,6 +13,7 @@ const (
 	FILE_PREFIX_KEY        = "fileprefix:"
 	PROVE_PARAM_KEY        = "proveparam"
 	FILE_BLOCKHASH_KEY     = "fileblockhash:"
+	DATA_KEY               = "data:"
 )
 
 type FsStore struct {
@@ -295,6 +296,47 @@ func (fss *FsStore) DeleteFileBlockHash(key string) error {
 	return err
 }
 
+func (fss *FsStore) GetData(key string) ([]byte, error) {
+	if len(key) == 0 {
+		return nil, errors.New("get data: key is nil")
+	}
+	bdata, err := fss.db.Get(genDataKey(key))
+	if err != nil {
+		return nil, err
+	}
+	return bdata, nil
+}
+
+// Put a user defined data into storage
+func (fss *FsStore) PutData(key string, data []byte) error {
+	if len(key) == 0 {
+		return errors.New("put data : key is nil")
+	}
+	return fss.db.Put(genDataKey(key), data)
+}
+
+// Delete user defined data from storage
+func (fss *FsStore) DeleteData(key string) error {
+	if len(key) == 0 {
+		return errors.New("deleteData: key is nil")
+	}
+	return fss.db.Delete(genDataKey(key))
+}
+
+func (fss *FsStore) GetDataWithPrefix(prefix string) ([][]byte, error) {
+	var out [][]byte
+
+	iter := fss.db.NewIterator(genDataKey(prefix))
+
+	defer iter.Release()
+	for iter.Next() {
+		data := make([]byte, len(iter.Value()))
+		copy(data, iter.Value())
+		out = append(out, data)
+	}
+	return out, nil
+}
+
 func genBlockAttrKey(key string) []byte {
 	return ([]byte)(BLOCK_ATTR_PREFIX + key)
 }
@@ -313,4 +355,8 @@ func genProveParamKey(key string) []byte {
 
 func genFileBlockHashKey(key string) []byte {
 	return ([]byte)(FILE_BLOCKHASH_KEY + key)
+}
+
+func genDataKey(key string) []byte {
+	return ([]byte)(DATA_KEY + key)
 }

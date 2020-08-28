@@ -274,7 +274,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		pinner:           pinner,
 		provetasks:       new(sync.Map),
 		sectorProveTasks: new(sync.Map),
-		sectorManager:    sector.InitSectorManager(),
+		sectorManager:    sector.InitSectorManager(fsstore),
 		repo:             repo,
 		chain:            chain,
 		config: &FSConfig{

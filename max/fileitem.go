@@ -157,9 +157,12 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 func (this *FilePDPItem) processForSectorProve() error {
 	max := this.getMaxService()
 
+	proveLevel := this.FileInfo.ProveLevel
 	fileHash := string(this.FileInfo.FileHash)
+	blockCount := this.FileInfo.FileBlockNum
+	blockSize := this.FileInfo.FileBlockSize
 
-	sector, err := max.sectorManager.AddFile(this.FileInfo)
+	sector, err := max.sectorManager.AddFile(proveLevel, fileHash, blockCount, blockSize)
 	if err != nil {
 		log.Errorf("addFileToSector for file %s error %s", fileHash, err)
 		return err

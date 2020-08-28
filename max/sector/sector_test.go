@@ -18,7 +18,7 @@ type File struct {
 }
 
 func TestSector(t *testing.T) {
-	sector := InitSector(1, SECTOR_SIZE)
+	sector := InitSector(nil, 1, SECTOR_SIZE)
 
 	files := []File{
 		File{"file1", 100, BLOCK_SIZE},
@@ -74,7 +74,7 @@ func TestSector(t *testing.T) {
 }
 
 func TestGetFilePosBySectorIndex(t *testing.T) {
-	sector := InitSector(1, SECTOR_SIZE)
+	sector := InitSector(nil, 1, SECTOR_SIZE)
 
 	files := []File{
 		File{"file1", 100, BLOCK_SIZE},

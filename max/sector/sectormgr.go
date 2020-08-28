@@ -17,8 +17,10 @@ type SectorManager struct {
 	sectors         map[uint64]map[uint64]*Sector // proveLevel -> sectorId -> sector
 	sectorIdMap     map[uint64]*Sector            // sector id -> sector
 	fileSectorIdMap map[string]uint64             // fileHash -> sector id
+	db              DB                            // db for persist sector data
 	kill            chan struct{}
 	sectorEventChan chan *SectorEvent // channel for sector create/delete event
+	isLoading       bool
 }
 
 const (
@@ -34,13 +36,15 @@ type SectorEvent struct {
 }
 
 // need to add more generic interface for saving/retriving data from db like getData
-func InitSectorManager() *SectorManager {
+func InitSectorManager(db DB) *SectorManager {
 	return &SectorManager{
 		sectors:         make(map[uint64]map[uint64]*Sector),
 		sectorIdMap:     make(map[uint64]*Sector),
 		fileSectorIdMap: make(map[string]uint64),
+		db:              db,
 		kill:            make(chan struct{}),
 		sectorEventChan: make(chan *SectorEvent, 100),
+		isLoading:       false,
 	}
 }
 
@@ -100,11 +104,17 @@ func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size
 		this.sectors[proveLevel] = sectors
 	}
 
-	sector = InitSector(sectorId, size)
+	sector = InitSector(this, sectorId, size)
 	sector.proveParam.proveLevel = proveLevel
 	sectors[sector.sectorId] = sector
 
 	this.sectorIdMap[sectorId] = sector
+
+	err := this.saveSectorList()
+	if err != nil {
+		log.Errorf("[CreateSector] saveSectorList error %s", err)
+		return nil, err
+	}
 
 	log.Debugf("[CreateSector] Sector created with sectorid %d, proveLevel %d, size %d", sectorId, proveLevel, size)
 	return sector, nil
@@ -128,6 +138,13 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 
 	delete(sectors, sector.sectorId)
 	delete(this.sectorIdMap, sector.sectorId)
+
+	err := this.saveSectorList()
+	if err != nil {
+		log.Errorf("[DeleteSector] saveSectorList error %s", err)
+		return err
+	}
+
 	log.Debugf("Sector deleted with sectorid %d", sectorId)
 	return nil
 }
@@ -141,24 +158,13 @@ func (this *SectorManager) GetSectorBySectorId(sectorId uint64) *Sector {
 }
 
 // try add a file with a fileInfo to blocks which has enough size for file
-func (this *SectorManager) AddFile(fileInfo *fs.FileInfo) (*Sector, error) {
-	if fileInfo == nil {
-		return nil, fmt.Errorf("addFile error, fileInfo is nil")
-	}
-
-	fileHash := string(fileInfo.FileHash)
-	if !fileInfo.ValidFlag {
-		return nil, fmt.Errorf("addFile error, file %s is invalid", fileHash)
-	}
-
+func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64) (*Sector, error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
 	if this.IsFileAdded(fileHash) {
 		return nil, fmt.Errorf("addFile error, file %s is already added", fileHash)
 	}
-
-	proveLevel := fileInfo.ProveLevel
 
 	sectors, exist := this.sectors[proveLevel]
 	if !exist {
@@ -169,14 +175,14 @@ func (this *SectorManager) AddFile(fileInfo *fs.FileInfo) (*Sector, error) {
 	// eg, if one sector has remaining size 2G, and we want to store a file with 1G, it should be
 	// stored in this sector instead of putting it in a empty sector
 
-	fileSize := fileInfo.FileBlockNum * fileInfo.FileBlockSize
+	fileSize := blockCount * blockSize
 	sectorId := this.FindMatchingSectorIdWithSize(sectors, fileSize)
 	if sectorId == 0 {
 		return nil, fmt.Errorf("addFile error, no matching sector found for file %s with size %d", fileHash, fileSize)
 	}
 
 	sector := this.GetSectorBySectorId(sectorId)
-	err := sector.AddFileToSector(fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize)
+	err := sector.AddFileToSector(fileHash, blockCount, blockSize)
 	if err != nil {
 		return nil, fmt.Errorf("addFile error, addFileToSector error %v", err)
 	}
