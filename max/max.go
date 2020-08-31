@@ -314,6 +314,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		go service.startPdpCalculationService()
 		go service.startPdpSubmissionService()
 		go service.sectorManager.StartSectorManagerService()
+		go service.startSectorProveService()
 
 		err = service.loadPDPTasksOnStartup()
 		if err != nil {

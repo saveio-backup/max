@@ -71,6 +71,8 @@ func (this *MaxService) IsScheduledForPdpCalculationOrSubmission(key string) boo
 
 // push to pdp queue to schedule for pdp calculation
 func (this *MaxService) scheduleForProve(pdpItem PDPItem) error {
+	log.Debugf("scheduleForProve for pdpItem %v", pdpItem)
+	log.Debugf("scheduleForProve  with key %s, challengeHeight %d", pdpItem.getItemKey(), pdpItem.getPdpCalculationHeight())
 	item := &Item{
 		Key:      pdpItem.getItemKey(),
 		Value:    pdpItem,
@@ -79,11 +81,13 @@ func (this *MaxService) scheduleForProve(pdpItem PDPItem) error {
 	return this.pdpQueue.Push(item)
 }
 
-func (this *MaxService) ScheduleForPdpSubmission(item PDPItem) error {
+func (this *MaxService) ScheduleForPdpSubmission(pdpItem PDPItem) error {
+	log.Debugf("ScheduleForPdpSubmission for pdpItem %v", pdpItem)
+	log.Debugf("ScheduleForPdpSubmission with key %s, submissionHeight %d", pdpItem.getItemKey(), pdpItem.getPdpSubmissionHeight())
 	subItem := &Item{
-		Key:      item.getItemKey(),
-		Value:    item,
-		Priority: int(item.getPdpSubmissionHeight()),
+		Key:      pdpItem.getItemKey(),
+		Value:    pdpItem,
+		Priority: int(pdpItem.getPdpSubmissionHeight()),
 		Index:    0,
 	}
 	return this.submitQueue.Push(subItem)

@@ -26,11 +26,15 @@ func (this *SectorPDPItem) doPdpCalculation() error {
 		return fmt.Errorf("doPdpCalculation, no sector in the item")
 	}
 
+	log.Debugf("doPdpCalculation for sector %d", this.SectorId)
+
 	sector := this.Sector
 
 	// generate challenges
 	challenges := fs.GenChallenge(this.getAccountAddress(), this.BlockHash,
 		uint32(sector.GetTotalBlockCount()), uint32(sector.GetProveBlockNum()))
+
+	log.Debugf("doPdpCalculation for sector %d, challenges %v", this.SectorId, challenges)
 
 	indexes := make([]uint64, 0)
 
@@ -102,6 +106,7 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 	blocksForPdp := make([][]byte, 0)
 	tagsForPdp := make([][]byte, 0)
 	fileIdsForPdp := make([]pdp.FileID, 0)
+	max := this.getMaxService()
 
 	curIndex := 0
 	for _, pos := range filePos {
@@ -120,8 +125,11 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 			curIndex++
 		}
 
-		//todo: get prove param from localDB or from network when cannot found locally
-		var proveParam *fs.ProveParam
+		proveParam, err := this.getPDPProveParamForFile(fileHash)
+		if err != nil {
+			log.Errorf("[doPdpCalculationForSector] getPDPProveParamForFile for file %s error %s", fileHash, err)
+			return nil, err
+		}
 
 		rootCid, err := cid.Decode(fileHash)
 		if err != nil {
@@ -129,7 +137,6 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 			return nil, err
 		}
 
-		max := this.getMaxService()
 		cids, err := max.GetFileAllCids(context.TODO(), rootCid)
 		if err != nil {
 			log.Errorf("[doPdpCalculationForSector] GetFileAllCids for fileHash %s error : %s", fileHash, err)
@@ -286,6 +293,25 @@ func (this *SectorPDPItem) getFsContract() *fscontract.Fs {
 
 func (this *SectorPDPItem) getAccountAddress() common.Address {
 	return this.getMaxService().getAccoutAddress()
+}
+
+func (this *SectorPDPItem) getPDPProveParamForFile(fileHash string) (*fs.ProveParam, error) {
+	param, err := this.getMaxService().getProveTask(fileHash)
+	if err != nil {
+		return nil, err
+	}
+
+	if param == nil {
+		return nil, fmt.Errorf("param for file %s is nil", fileHash)
+	}
+
+	var pdpParam fs.ProveParam
+	paramReader := bytes.NewReader(param.PDPParam)
+	err = pdpParam.Deserialize(paramReader)
+	if err != nil {
+		return nil, err
+	}
+	return &pdpParam, nil
 }
 
 func getSectorIdString(sectorId uint64) string {

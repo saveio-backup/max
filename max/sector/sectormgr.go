@@ -283,6 +283,17 @@ func (this *SectorManager) setProveParam(sector *Sector, proveLevel uint64) erro
 	return this.saveSectorProveParam(sector.sectorId)
 }
 
+func (this *SectorManager) GetAllSectorIds() ([]uint64, error) {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
+	sectorIds := make([]uint64, 0)
+	for sectorId, _ := range this.sectorIdMap {
+		sectorIds = append(sectorIds, sectorId)
+	}
+	return sectorIds, nil
+}
+
 func getIntervalByProveLevel(proveLevel uint64) uint64 {
 	switch proveLevel {
 	case fs.PROVE_LEVEL_HIGH:
