@@ -45,9 +45,13 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		return fmt.Errorf("PDP verify task for filehash: %s already started", fileHash)
 	}
 
-	once.Do(func() {
-		go this.proveFileService()
-	})
+	// no need for periodically file prove, after first successful file prove,
+	// it will be covered by sector prove
+	/*
+		once.Do(func() {
+			go this.proveFileService()
+		})
+	*/
 
 	fileProveDetails, err := this.getFileProveDetails(fileHash)
 	if err != nil {

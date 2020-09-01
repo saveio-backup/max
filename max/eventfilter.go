@@ -1,13 +1,17 @@
 package max
 
 import (
+	"encoding/json"
 	"fmt"
+	ldb "github.com/saveio/max/max/leveldbstore"
 	"github.com/saveio/max/max/sector"
 	"github.com/saveio/themis/common/log"
 	"github.com/saveio/themis/smartcontract/service/native/utils"
 	"reflect"
 	"time"
 )
+
+const LATEST_HEIGHT_KEY = "latestheight:"
 
 func (this *MaxService) StartEventFilter(interval uint32) error {
 	if this.chain == nil {
@@ -29,6 +33,12 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		log.Debugf("start event filter")
+
+		latestHeight, err = this.loadLatestHeight()
+		if err != nil {
+			log.Errorf("loadLatestHeight error %s", err)
+		}
+		log.Debugf("eventfilter latestHeight is %d", latestHeight)
 
 		defer ticker.Stop()
 		for {
@@ -57,6 +67,10 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 				}
 
 				latestHeight = currHeight
+				err = this.saveLatestHeight(latestHeight)
+				if err != nil {
+					log.Errorf("SaveLatestHeight error %s", err)
+				}
 
 			case <-this.kill:
 				log.Debugf("stop event filter")
@@ -180,6 +194,45 @@ func (this *MaxService) processOneFileDelete(fileHash string) {
 		}
 	}
 }
+
+type latestHeight struct {
+	Height uint32 `json:"height"`
+}
+
+func (this *MaxService) loadLatestHeight() (uint32, error) {
+	data, err := this.fsstore.GetData(generateLatestHeightKey())
+	if err != nil {
+		if err == ldb.ErrNotFound {
+			return 0, nil
+		}
+		log.Errorf("loadLatestHeight error %s", err)
+		return 0, err
+	}
+
+	height := new(latestHeight)
+	err = json.Unmarshal(data, height)
+	if err != nil {
+		return 0, err
+	}
+	log.Debugf("loadLatestHeight: %d", height.Height)
+	return height.Height, nil
+}
+
+func (this *MaxService) saveLatestHeight(height uint32) error {
+	latest := &latestHeight{Height: height}
+
+	data, err := json.Marshal(latest)
+	if err != nil {
+		return err
+	}
+
+	return this.fsstore.PutData(generateLatestHeightKey(), data)
+}
+
+func generateLatestHeightKey() string {
+	return LATEST_HEIGHT_KEY
+}
+
 func parseEvent(event map[string]interface{}) (map[string]interface{}, error) {
 	events := make(map[string]interface{})
 
