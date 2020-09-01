@@ -72,15 +72,23 @@ func (this *MaxService) proveSector(sectorId uint64) error {
 		return fmt.Errorf("proveSector error sector %d not exist", sectorId)
 	}
 
-	height, hash := this.getCurrentBlockHeightAndHash()
-	if height < uint32(sector.GetNextProveHeight()) {
-		log.Debugf("proveSector, not reach next prove height %d for sector %d", sector.GetNextProveHeight(), sectorId)
+	challengeHeight := uint32(sector.GetNextProveHeight())
+
+	height, _ := this.getCurrentBlockHeightAndHash()
+	if height < challengeHeight {
+		log.Debugf("proveSector, not reach next prove height %d for sector %d", challengeHeight, sectorId)
 		return nil
 	}
 
 	if this.IsScheduledForPdpCalculationOrSubmission(getSectorIdString(sectorId)) {
 		log.Debugf("proveSector, sector %d has been scheduled for pdp calculation or submission", sectorId)
 		return nil
+	}
+
+	hash, err := this.getFsContract().Client.GetBlockHash(challengeHeight)
+	if err != nil {
+		log.Errorf("proveSector, getBlockHash for height %d error %s", height, err)
+		return fmt.Errorf("proveSector, getBlockHash for height %d error %s", height, err)
 	}
 
 	sectorPdpItem := &SectorPDPItem{
@@ -90,7 +98,7 @@ func (this *MaxService) proveSector(sectorId uint64) error {
 		max:       this,
 	}
 
-	err := this.scheduleForProve(sectorPdpItem)
+	err = this.scheduleForProve(sectorPdpItem)
 	if err != nil {
 		log.Errorf("proveSector, scheduleForProve for sector %d error %s", sectorId, err)
 		return err

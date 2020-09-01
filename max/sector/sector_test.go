@@ -120,6 +120,37 @@ func TestGetFilePosBySectorIndex(t *testing.T) {
 	}
 
 }
+func TestGetFilePosBySectorIndexBoundary(t *testing.T) {
+	sector := InitSector(nil, 1, SECTOR_SIZE)
+
+	files := []File{
+		File{"file1", 16, BLOCK_SIZE},
+	}
+	for _, file := range files {
+		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !sector.IsFileInSector(file.FileHash) {
+			t.Fatalf("file %s is not in sector", file.FileHash)
+		}
+	}
+
+	indexes := []uint64{1, 8, 15}
+
+	t.Logf("indexes : %v\n", indexes)
+
+	filePos, err := sector.GetFilePosBySectorIndexes(indexes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pos := range filePos {
+		t.Logf("filePos : %+v\n", pos)
+	}
+
+}
 
 func getTotalBlockCount(files []File) uint64 {
 	var count uint64

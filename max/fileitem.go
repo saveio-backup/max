@@ -197,12 +197,6 @@ func (this *FilePDPItem) processForSectorProve() error {
 
 	sector.UnLockSector()
 
-	err := sector.SetNextProveHeight(uint64(this.NextChalHeight) + sector.GetProveInterval())
-	if err != nil {
-		log.Errorf("addFileToSector setNextProveHeight for sector %d error %s", sectorId, err)
-		return err
-	}
-
 	// if sector prove task not exist, create a sector prove task
 	if !max.isSectorProveTaskExist(sectorId) {
 		err := max.addSectorProveTask(sectorId)
@@ -210,11 +204,17 @@ func (this *FilePDPItem) processForSectorProve() error {
 			return err
 		}
 		log.Debugf("addProveTask for sector %d", sectorId)
+
+		err = sector.SetNextProveHeight(uint64(this.NextChalHeight) + sector.GetProveInterval())
+		if err != nil {
+			log.Errorf("addFileToSector setNextProveHeight for sector %d error %s", sectorId, err)
+			return err
+		}
 	}
 
 	// remove the task no more file prove needed after first success file prove
 	// keep prove param in db for sector prove
-	err = max.deleteProveTask(fileHash, false)
+	err := max.deleteProveTask(fileHash, false)
 	if err != nil {
 		log.Errorf("processForSectorProve, deleteProveTask for file %s error %s", fileHash, err)
 		return nil
@@ -406,7 +406,7 @@ func (this *FilePDPItem) generateProve(prover *pdp.Pdp, proveParam *fs.ProvePara
 }
 
 func (this *FilePDPItem) getFsContract() *fscontract.Fs {
-	return this.getMaxService().chain.Native.Fs
+	return this.getMaxService().getFsContract()
 }
 
 func (this *FilePDPItem) getAccountAddress() common.Address {

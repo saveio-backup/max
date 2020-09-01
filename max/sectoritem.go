@@ -83,8 +83,8 @@ func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
 }
 
 func (this *SectorPDPItem) onFailedPdpSubmission(err error) error {
-	// TODO: may need to retry
-	return nil
+	log.Errorf("onFailedPdpSubmission, pdp submission for sector %d error %s", this.SectorId, err)
+	return fmt.Errorf("onFailedPdpSubmission, pdp submission for sector %d error %s", this.SectorId, err)
 }
 
 func (this *SectorPDPItem) getItemKey() string {
@@ -111,9 +111,9 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 	curIndex := 0
 	for _, pos := range filePos {
 		fileHash := pos.FileHash
-		blockIndexes := pos.BlockIndexes
 		fileChallenges := make([]pdp.Challenge, 0)
-		for _, index := range blockIndexes {
+
+		for _, index := range pos.BlockIndexes {
 			challenge := pdp.Challenge{
 				Index: uint32(index),
 				Rand:  challenges[curIndex].Rand,
@@ -288,7 +288,7 @@ func (this *SectorPDPItem) getSectorManager() *sector.SectorManager {
 }
 
 func (this *SectorPDPItem) getFsContract() *fscontract.Fs {
-	return this.getMaxService().chain.Native.Fs
+	return this.getMaxService().getFsContract()
 }
 
 func (this *SectorPDPItem) getAccountAddress() common.Address {

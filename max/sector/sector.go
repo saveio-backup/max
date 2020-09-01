@@ -67,6 +67,7 @@ func (this *Sector) SetNextProveHeight(height uint64) error {
 		return fmt.Errorf("height %d is smaller than next prove height %d", height, curHeight)
 	}
 	this.proveParam.NextProveHeight = height
+	log.Debugf("SetNextProveHeight for sector %d as %d", this.sectorId, height)
 	return this.saveProveParam()
 }
 
@@ -244,7 +245,7 @@ func (this *Sector) GetFilePosBySectorIndexes(indexes []uint64) ([]*FilePos, err
 		}
 		for i := curIndex; i < len(indexes); i++ {
 			index := indexes[curIndex]
-			if index >= start && index < end {
+			if index >= start && index <= end {
 				pos.BlockIndexes = append(pos.BlockIndexes, index-start)
 
 				curIndex++

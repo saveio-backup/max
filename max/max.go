@@ -55,6 +55,7 @@ import (
 	"github.com/saveio/max/thirdparty/verifbs"
 	"github.com/saveio/max/unixfs/archive"
 	sdk "github.com/saveio/themis-go-sdk"
+	fscontract "github.com/saveio/themis-go-sdk/fs"
 )
 
 //var log = logging.Logger("max")
@@ -1411,8 +1412,13 @@ func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string
 	}
 	return nil
 }
+
 func (this *MaxService) getAccoutAddress() common.Address {
 	return this.chain.Native.Fs.DefAcc.Address
+}
+
+func (this *MaxService) getFsContract() *fscontract.Fs {
+	return this.chain.Native.Fs
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {
