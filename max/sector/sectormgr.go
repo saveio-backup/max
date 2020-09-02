@@ -203,7 +203,7 @@ func (this *SectorManager) DeleteFile(fileHash string) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	if sectorId = this.GetFileSectorId(fileHash); sectorId != 0 {
+	if sectorId = this.GetFileSectorId(fileHash); sectorId == 0 {
 		return fmt.Errorf("deleteFile, file %s is not in sectors", fileHash)
 	}
 

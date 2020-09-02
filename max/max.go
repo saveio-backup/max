@@ -1052,6 +1052,11 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 		// clear rpc cache
 		this.rpcCache.deleteFileInfo(fileHash)
 		this.rpcCache.deleteProveDetails(fileHash)
+
+		err = this.sectorManager.DeleteFile(fileHash)
+		if err != nil {
+			log.Errorf("[DeleteFile] delete file %s from sector error: %s", fileHash, err)
+		}
 	}
 	return this.deleteFile(fileHash)
 }

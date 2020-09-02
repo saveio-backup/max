@@ -118,9 +118,10 @@ func (this *MaxService) processPdpSubmissionQueue() {
 		pdpItem := item.Value.(PDPItem)
 		itemKey := pdpItem.getItemKey()
 
+		log.Debugf("process pdp submission for item %s", itemKey)
 		currentHeight, _ := this.getCurrentBlockHeightAndHash()
 		if currentHeight >= pdpItem.getPdpSubmissionHeight() {
-			log.Debugf("time to submit file prove for item %s", itemKey)
+			log.Debugf("time to submit prove for item %s", itemKey)
 
 			// put in the submission map since the waitForConfirmation will block
 			// following submission if not run in a go routine, and make sure it

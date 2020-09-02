@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-const SECTOR_BLOCK_SIZE = 256 * 1024
+const SECTOR_BLOCK_SIZE = 256
 
 const SECTOR_BLOCK_COUNT = MIN_SECTOR_SIZE / SECTOR_BLOCK_SIZE
 

@@ -73,6 +73,38 @@ func TestSector(t *testing.T) {
 	}
 }
 
+func TestSectorManager(t *testing.T) {
+
+	db := InitTestDB()
+	manager := InitSectorManager(db)
+
+	_, err := manager.CreateSector(1, 1, MIN_SECTOR_SIZE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileHash := "file1"
+
+	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !manager.IsFileAdded(fileHash) {
+		t.Fatalf("file added test failed,expect true")
+	}
+
+	err = manager.DeleteFile(fileHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if manager.IsFileAdded(fileHash) {
+		t.Fatalf("file added test failed,expect false")
+	}
+
+}
+
 func TestGetFilePosBySectorIndex(t *testing.T) {
 	sector := InitSector(nil, 1, SECTOR_SIZE)
 

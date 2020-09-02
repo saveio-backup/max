@@ -92,10 +92,11 @@ func (this *MaxService) proveSector(sectorId uint64) error {
 	}
 
 	sectorPdpItem := &SectorPDPItem{
-		SectorId:  sectorId,
-		Sector:    sector,
-		BlockHash: hash,
-		max:       this,
+		SectorId:        sectorId,
+		Sector:          sector,
+		NextProveHeight: challengeHeight,
+		BlockHash:       hash,
+		max:             this,
 	}
 
 	err = this.scheduleForProve(sectorPdpItem)

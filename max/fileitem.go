@@ -111,8 +111,16 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 	fsContract := this.getFsContract()
 	fileHash := this.FileHash
 	height := this.NextChalHeight
-
 	max := this.getMaxService()
+	sectorId := this.sectorId
+
+	sector := max.sectorManager.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		panic("sector not exist")
+	}
+
+	sector.UnLockSector()
+
 	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	log.Debugf("proveDetails for file %s: %+v", fileHash, proveDetails)
 	if err != nil {
@@ -194,8 +202,6 @@ func (this *FilePDPItem) processForSectorProve() error {
 	if sector == nil {
 		panic("sector not exist")
 	}
-
-	sector.UnLockSector()
 
 	// if sector prove task not exist, create a sector prove task
 	if !max.isSectorProveTaskExist(sectorId) {
