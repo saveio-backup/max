@@ -106,7 +106,14 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 	blocksForPdp := make([][]byte, 0)
 	tagsForPdp := make([][]byte, 0)
 	fileIdsForPdp := make([]pdp.FileID, 0)
+	// save updated challenge with index in file range other than global index
+	updatedChallenges := make([]pdp.Challenge, 0)
 	max := this.getMaxService()
+
+	log.Debugf("[doPdpCalculationForSector] with challenges %+v", challenges)
+	for _, pos := range filePos {
+		log.Debugf("[doPdpCalculationForSector] with filePos %+v", pos)
+	}
 
 	curIndex := 0
 	for _, pos := range filePos {
@@ -157,8 +164,9 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 		fileIdsForPdp = append(fileIdsForPdp, fileIds...)
 		tagsForPdp = append(tagsForPdp, tags...)
 		blocksForPdp = append(blocksForPdp, blocks...)
+		updatedChallenges = append(updatedChallenges, fileChallenges...)
 	}
-	return this.generateProve(prover, uint64(len(filePos)), fileIdsForPdp, challenges, tagsForPdp, blocksForPdp)
+	return this.generateProve(prover, uint64(len(filePos)), fileIdsForPdp, updatedChallenges, tagsForPdp, blocksForPdp)
 }
 
 func (this *SectorPDPItem) initProverWithTagsForFile(prover *pdp.Pdp, fileHash string, proveParam *fs.ProveParam, cids []*cid.Cid) error {
