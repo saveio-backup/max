@@ -303,6 +303,6 @@ func getIntervalByProveLevel(proveLevel uint64) uint64 {
 	case fs.PROVE_LEVEL_LOW:
 		return fs.PROVE_PERIOD_LOW
 	default:
-		return fs.DEFAULT_PROVE_PERIOD
+	    panic("unknown prove level")
 	}
 }
