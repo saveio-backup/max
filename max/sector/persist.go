@@ -124,6 +124,13 @@ func (this *SectorManager) loadSectorFileList(sectorId uint64) (*DBSectorFileLis
 	return sectorFileList, nil
 }
 
+func (this *SectorManager) deleteSectorFileList(sectorId uint64) error {
+	if this.db == nil {
+		return nil
+	}
+	return this.db.DeleteData(genSectorFileListKey(sectorId))
+}
+
 func (this *SectorManager) saveSectorProveParam(sectorId uint64) error {
 	if this.isOnStartup() {
 		return nil
@@ -140,6 +147,13 @@ func (this *SectorManager) saveSectorProveParam(sectorId uint64) error {
 	}
 
 	return this.db.PutData(genSectorProveParamKey(sectorId), data)
+}
+
+func (this *SectorManager) deleteSectorProveParam(sectorId uint64) error {
+	if this.db == nil {
+		return nil
+	}
+	return this.db.DeleteData(genSectorProveParamKey(sectorId))
 }
 
 func (this *SectorManager) loadSectorProveParam(sectorId uint64) (*SectorProveParam, error) {

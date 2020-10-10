@@ -154,6 +154,18 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 		return err
 	}
 
+	err = this.deleteSectorFileList(sectorId)
+	if err != nil {
+		log.Errorf("[DeleteSector] deleteSectorFileList error %s", err)
+		return err
+	}
+
+	err = this.deleteSectorProveParam(sectorId)
+	if err != nil {
+		log.Errorf("[DeleteSector] deleteSectorProveParam error %s", err)
+		return err
+	}
+
 	log.Debugf("Sector deleted with sectorid %d", sectorId)
 	return nil
 }
