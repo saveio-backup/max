@@ -33,12 +33,12 @@ func TestSectorPersist(t *testing.T) {
 		},
 	}
 
-	for _, info := range sectorList {
+	for index, info := range sectorList {
 		sector, err := manager.CreateSector(info.SectorId, info.ProveLevel, info.Size)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sectorIdStr := strconv.Itoa(int(sector.sectorId))
+		sectorIdStr := strconv.Itoa(int(sector.GetSectorID()))
 		sectorIdStr = sectorIdStr + "-"
 
 		fileList := []*SectorFileInfo{
@@ -64,17 +64,64 @@ func TestSectorPersist(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			// can not add a file that is already in sector as a candidate file
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			if err == nil {
+				t.Fatalf("cannot add a file that is already in sector as a candidate")
+			}
 		}
 
-		err = sector.SetFirstProveHeight(100)
+		CandidateFileList := []*SectorFileInfo{
+			&SectorFileInfo{
+				FileHash:   sectorIdStr + "file4",
+				BlockCount: SECTOR_BLOCK_COUNT / 4,
+				BlockSize:  SECTOR_BLOCK_SIZE,
+			},
+			&SectorFileInfo{
+				FileHash:   sectorIdStr + "file5",
+				BlockCount: SECTOR_BLOCK_COUNT / 4,
+				BlockSize:  SECTOR_BLOCK_SIZE,
+			},
+		}
+
+		// try add as file as candidate when sector is full
+		for _, file := range CandidateFileList {
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			if err == nil {
+				t.Fatalf("cannot add a file as candidate, sector already full")
+			}
+		}
+
+		// delete a file to make space for candidate file
+		err = manager.DeleteFile(fileList[0].FileHash)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = sector.SetLastProveHeight(200)
+
+		// add file as candidate should be fine now
+		for _, file := range CandidateFileList {
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// move a file from candidate list to sector
+		err = manager.MoveCandidateFileToSector(CandidateFileList[0].FileHash)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = sector.SetNextProveHeight(300)
+
+		err = sector.SetFirstProveHeight(uint64(100 * index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = sector.SetLastProveHeight(uint64(200 * index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = sector.SetNextProveHeight(uint64(300 * index))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,8 +211,12 @@ func printSectorManager(m *SectorManager, t *testing.T) {
 		t.Logf("sector %d:\n", id)
 		t.Logf("sector data %+v\n", sector)
 
-		for _, file := range sector.fileList {
+		for _, file := range sector.GetFileList() {
 			t.Logf("file %s, block count %d, block size %d\n", file.FileHash, file.BlockCount, file.BlockSize)
+		}
+
+		for _, file := range sector.GetCandidateFileList() {
+			t.Logf("candidate file %s, block count %d, block size %d\n", file.FileHash, file.BlockCount, file.BlockSize)
 		}
 	}
 }

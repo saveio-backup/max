@@ -31,8 +31,11 @@ func (this *SectorPDPItem) doPdpCalculation() error {
 
 	sector := this.Sector
 
-	// lock sector to avoid file prove task add file to sector concurrently
-	sector.LockSector()
+	// lock the candidate list and wait until candidate list is empty
+	// after lock the candidate list, no more files can be added to candidate list, but candidate can be moved
+	// to sector when file pdp succeed.
+	// file that needs to be submitted will need to wait until the candidate list is unlocked to add to candidate list
+	sector.BlockUntilCandidateListEmpty()
 
 	// generate challenges
 	challenges := fs.GenChallenge(this.getAccountAddress(), this.BlockHash,
@@ -61,7 +64,7 @@ func (this *SectorPDPItem) doPdpCalculation() error {
 }
 
 func (this *SectorPDPItem) onFailedPdpCalculation(err error) error {
-	this.Sector.UnLockSector()
+	this.Sector.UnlockCandidateList()
 	log.Errorf("onFailedPdpCalculation for %s, error %s", this.getItemKey(), err)
 	return nil
 }
@@ -71,7 +74,7 @@ func (this *SectorPDPItem) doPdpSubmission() (txHash []byte, err error) {
 }
 
 func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
-	this.Sector.UnLockSector()
+	this.Sector.UnlockCandidateList()
 
 	sectorInfo, err := this.getFsContract().GetSectorInfo(this.SectorId)
 	if err != nil {
@@ -104,7 +107,8 @@ func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
 }
 
 func (this *SectorPDPItem) onFailedPdpSubmission(err error) error {
-	this.Sector.UnLockSector()
+	this.Sector.UnlockCandidateList()
+
 	log.Errorf("onFailedPdpSubmission, pdp submission for sector %d error %s", this.SectorId, err)
 	return fmt.Errorf("onFailedPdpSubmission, pdp submission for sector %d error %s", this.SectorId, err)
 }

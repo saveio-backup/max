@@ -2,7 +2,9 @@ package max
 
 import (
 	"fmt"
+	"github.com/saveio/max/max/sector"
 	"github.com/saveio/themis/common/log"
+	"sort"
 	"time"
 )
 
@@ -50,13 +52,73 @@ func (this *MaxService) loadSectorProveTasks() error {
 	for _, sectorId := range sectorIds {
 		sector := this.sectorManager.GetSectorBySectorId(sectorId)
 		if sector == nil {
-			return fmt.Errorf("GetAllSectorIds error %s", err)
+			log.Errorf("sector %d not found", sectorId)
+			continue
 		}
 
-		if sector.GetFirstProveHeight() != 0 {
+		err = this.processCandidateFileSynchronization(sector)
+		if err != nil {
+			log.Errorf("processCandidateFileSynchronization error %s", err)
+			continue
+		}
+
+		if sector.GetFirstProveHeight() != 0 && sector.GetTotalBlockCount() != 0 {
 			err = this.addSectorProveTask(sectorId)
 			if err != nil {
 				return fmt.Errorf("addSectorProveTask error %s", err)
+			}
+		}
+	}
+	return nil
+}
+
+// process sector status synchronization with chain in case candidateFileList is not empty
+func (this *MaxService) processCandidateFileSynchronization(sector *sector.Sector) error {
+	candidateFileList := sector.GetCandidateFileList()
+
+	if len(candidateFileList) == 0 {
+		return nil
+	}
+
+	sectorId := sector.GetSectorID()
+
+	sectorInfo, err := this.getFsContract().GetSectorInfo(sectorId)
+	if err != nil {
+		log.Errorf("sector %d getSectorInfo error %s", sectorId, err)
+		return fmt.Errorf("sector %d getSectorInfo error %s", sectorId, err)
+	}
+
+	fileMap := make(map[string]int, 0)
+	for index, fileHash := range sectorInfo.FileList.List {
+		fileMap[string(fileHash.Hash)] = index
+	}
+
+	fileIndex := make([]int, 0)
+	for _, file := range candidateFileList {
+		index, exist := fileMap[file.FileHash]
+		if !exist {
+			err = sector.DeleteCandidateFile(file.FileHash)
+			if err != nil {
+				log.Errorf("sector %d deleteCandidateFile error %s", sectorId, err)
+			}
+			continue
+		}
+
+		fileIndex = append(fileIndex, index)
+	}
+
+	if len(fileIndex) != 0 {
+		sort.SliceStable(fileIndex, func(i, j int) bool {
+			return fileIndex[i] < fileIndex[j]
+		})
+
+		// add candidate file to sector in same order as on chain
+		for _, index := range fileIndex {
+			fileHash := string(sectorInfo.FileList.List[index].Hash)
+			err := sector.MoveCandidateFileToFileList(fileHash)
+			if err != nil {
+				log.Errorf("sector %d moveCandidateFileToFileList error %s", sectorId, err)
+				return fmt.Errorf("sector %d moveCandidateFileToFileList error %s", sectorId, err)
 			}
 		}
 	}

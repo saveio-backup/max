@@ -88,9 +88,6 @@ func (this *FilePDPItem) doPdpSubmission() ([]byte, error) {
 
 	log.Debugf("file %s has been assign to sector %d", fileHash, sectorId)
 
-	// lock the sector for the case where
-	sector.LockSector()
-
 	var txHash []byte
 
 	if bakParam.BakNum == 0 {
@@ -118,8 +115,6 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 	if sector == nil {
 		panic("sector not exist")
 	}
-
-	sector.UnLockSector()
 
 	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	log.Debugf("proveDetails for file %s: %+v", fileHash, proveDetails)
@@ -167,6 +162,12 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 		}
 		log.Debugf("save prove task for fileHash %s with first prove height %d after first prove", fileHash, height)
 
+		err = sector.MoveCandidateFileToFileList(this.FileHash)
+		if err != nil {
+			log.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
+			return fmt.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
+		}
+
 		err = this.processForSectorProve()
 		if err != nil {
 			log.Errorf("processForSectorProve for fileHash %s error : %s", fileHash, err)
@@ -184,7 +185,7 @@ func (this *FilePDPItem) assignSectorForFile() (*sector.Sector, error) {
 	blockCount := this.FileInfo.FileBlockNum
 	blockSize := this.FileInfo.FileBlockSize
 
-	sector, err := max.sectorManager.AddFile(proveLevel, fileHash, blockCount, blockSize)
+	sector, err := max.sectorManager.AddCandidateFile(proveLevel, fileHash, blockCount, blockSize)
 	if err != nil {
 		log.Errorf("assignSectorForFile for file %s error %s", fileHash, err)
 		return nil, err
@@ -231,12 +232,15 @@ func (this *FilePDPItem) processForSectorProve() error {
 func (this *FilePDPItem) onFailedPdpSubmission(err error) error {
 	max := this.getMaxService()
 
-	sector := max.sectorManager.GetSectorBySectorId(this.sectorId)
-	if sector == nil {
-		panic("sector not exist")
+	if this.sectorId != 0 {
+		sector := max.sectorManager.GetSectorBySectorId(this.sectorId)
+
+		err := sector.DeleteCandidateFile(this.FileHash)
+		if err != nil {
+			log.Errorf("deleteCandidateFile for file %d onFailedPdpSubmission error %s", this.FileHash, err)
+		}
 	}
 
-	sector.UnLockSector()
 	// delete the task if first prove error
 	if this.FirstProve {
 		return max.deleteAndNotify(this.FileHash, err.Error())

@@ -48,6 +48,12 @@ func InitSectorManager(db DB) *SectorManager {
 	}
 }
 
+func (this *SectorManager) SetDB(db DB) {
+	this.lock.Lock()
+	this.db = db
+	this.lock.Unlock()
+}
+
 // sector manager serivce handles sector creation
 func (this *SectorManager) StartSectorManagerService() {
 	log.Debugf("[SectorManagerService] start service")
@@ -62,8 +68,18 @@ func (this *SectorManager) StartSectorManagerService() {
 				go func() {
 					_, err := this.CreateSector(event.SectorID, event.ProveLevel, event.Size)
 					if err != nil {
-						log.Errorf("[SectorManagerService] create sector error : %s", err)
+						log.Errorf("[SectorManagerService] create sector %d error : %s", event.SectorID, err)
+						return
 					}
+					log.Debugf("[SectorManagerService] create sector %d success", event.SectorID)
+				}()
+			case SECTOR_EVENT_DELETE:
+				go func() {
+					err := this.DeleteSector(event.SectorID)
+					if err != nil {
+						log.Errorf("[SectorManagerService] delete sector %d error : %s", event.SectorID, err)
+					}
+					log.Debugf("[SectorManagerService] delete sector %d success", event.SectorID)
 				}()
 			default:
 				log.Errorf("[SectorManagerService] unknown event %s", event.Event)
@@ -105,7 +121,7 @@ func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size
 	}
 
 	sector = InitSector(this, sectorId, size)
-	sectors[sector.sectorId] = sector
+	sectors[sector.GetSectorID()] = sector
 
 	this.sectorIdMap[sectorId] = sector
 
@@ -145,8 +161,8 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 		return fmt.Errorf("deleteSector no sector found with proveLevel %d id %d", proveLevel, sectorId)
 	}
 
-	delete(sectors, sector.sectorId)
-	delete(this.sectorIdMap, sector.sectorId)
+	delete(sectors, sector.GetSectorID())
+	delete(this.sectorIdMap, sector.GetSectorID())
 
 	err := this.saveSectorList()
 	if err != nil {
@@ -187,28 +203,18 @@ func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCoun
 		return nil, fmt.Errorf("addFile error, file %s is already added", fileHash)
 	}
 
-	sectors, exist := this.sectors[proveLevel]
-	if !exist {
-		return nil, fmt.Errorf("addFile error, no sector with prove level %d found for file %s", proveLevel, fileHash)
-	}
-
-	//to find the sector which is most suitable for the file storage
-	// eg, if one sector has remaining size 2G, and we want to store a file with 1G, it should be
-	// stored in this sector instead of putting it in a empty sector
-
-	fileSize := blockCount * blockSize
-	sectorId := this.FindMatchingSectorIdWithSize(sectors, fileSize)
-	if sectorId == 0 {
-		return nil, fmt.Errorf("addFile error, no matching sector found for file %s with size %d", fileHash, fileSize)
+	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("addFile error, find matching sector error %s", err)
 	}
 
 	sector := this.GetSectorBySectorId(sectorId)
-	err := sector.AddFileToSector(fileHash, blockCount, blockSize)
+	err = sector.AddFileToSector(fileHash, blockCount, blockSize)
 	if err != nil {
 		return nil, fmt.Errorf("addFile error, addFileToSector error %v", err)
 	}
 
-	this.UpdateFileMap(fileHash, sector.sectorId, true)
+	this.UpdateFileMap(fileHash, sectorId, true)
 	log.Debugf("Sector AddFile: file %s is added to sector %d", fileHash, sectorId)
 	return sector, nil
 
@@ -239,6 +245,85 @@ func (this *SectorManager) DeleteFile(fileHash string) error {
 	return nil
 }
 
+// add a candidate file to sector, candidate file may be deleted or added to sector depending on pdp result
+func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64) (*Sector, error) {
+	this.lock.Lock()
+
+	if this.IsFileAdded(fileHash) {
+		this.lock.Unlock()
+		return nil, fmt.Errorf("addCandidateFile error, file %s is already added", fileHash)
+	}
+
+	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize)
+	if err != nil {
+		this.lock.Unlock()
+		return nil, fmt.Errorf("addCandidateFile error, find matching sector error %s", err)
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	this.lock.Unlock()
+
+	err = sector.AddCandidateFile(fileHash, blockCount, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("addCandidateFile error, addFileToSector error %v", err)
+	}
+
+	this.lock.Lock()
+	this.UpdateFileMap(fileHash, sectorId, true)
+	this.lock.Unlock()
+	log.Debugf("Sector AddCandidateFile: file %s is added to sector %d", fileHash, sectorId)
+	return sector, nil
+}
+
+func (this *SectorManager) DeleteCandidateFile(fileHash string) error {
+	var sectorId uint64
+
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	if sectorId = this.GetFileSectorId(fileHash); sectorId == 0 {
+		return fmt.Errorf("deleteCandiateFile, file %s is not in sectors", fileHash)
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		return fmt.Errorf("deleteCandidateFile, sector with id %d not found", sectorId)
+	}
+
+	err := sector.DeleteCandidateFile(fileHash)
+	if err != nil {
+		return fmt.Errorf("deleteCandidateFile, deleteFileFromSector for file %s error %s", fileHash, err)
+	}
+
+	this.UpdateFileMap(fileHash, sectorId, false)
+	log.Debugf("Sector DeleteCandidateFile: file %s is deleted from sector %d", fileHash, sectorId)
+	return nil
+}
+
+func (this *SectorManager) MoveCandidateFileToSector(fileHash string) error {
+	var sectorId uint64
+
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	if sectorId = this.GetFileSectorId(fileHash); sectorId == 0 {
+		return fmt.Errorf("MoveCandidateFileToSector, file %s is not in sectors", fileHash)
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		return fmt.Errorf("MoveCandidateFileToSector, sector with id %d not found", sectorId)
+	}
+
+	err := sector.MoveCandidateFileToFileList(fileHash)
+	if err != nil {
+		return fmt.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
+	}
+
+	log.Debugf("Sector MoveCandidateFileToSector : candidate file %s is moved to sector %d", fileHash, sectorId)
+	return nil
+}
+
 func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sector, fileSize uint64) uint64 {
 	candidates := make([]uint64, 0)
 	for sectorId, sector := range sectors {
@@ -256,6 +341,30 @@ func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sect
 		return candidates[i] < candidates[j]
 	})
 	return candidates[0]
+}
+
+func (this *SectorManager) FindMatchingSectorId(proveLevel uint64, fileSize uint64) (uint64, error) {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
+	return this.findMatchingSectorIdNoLock(proveLevel, fileSize)
+}
+
+func (this *SectorManager) findMatchingSectorIdNoLock(proveLevel uint64, fileSize uint64) (uint64, error) {
+	sectors, exist := this.sectors[proveLevel]
+	if !exist {
+		return 0, fmt.Errorf("no sector with prove level %d found", proveLevel)
+	}
+
+	//to find the sector which is most suitable for the file storage
+	// eg, if one sector has remaining size 2G, and we want to store a file with 1G, it should be
+	// stored in this sector instead of putting it in a empty sector
+	sectorId := this.FindMatchingSectorIdWithSize(sectors, fileSize)
+	if sectorId == 0 {
+		return 0, fmt.Errorf("no matching sector found for with size %d", fileSize)
+	}
+
+	return sectorId, nil
 }
 
 func (this *SectorManager) IsFileAdded(fileHash string) bool {
@@ -293,11 +402,11 @@ func (this *SectorManager) GetFilePosBySectorIndexes(sectorId uint64, indexes []
 }
 
 func (this *SectorManager) setProveParam(sector *Sector, proveLevel uint64) error {
-	sector.proveParam.ProveLevel = proveLevel
-	sector.proveParam.Interval = getIntervalByProveLevel(proveLevel)
-	sector.proveParam.ProveBlockNum = fs.SECTOR_PROVE_BLOCK_NUM
+	sector.GetProveParam().ProveLevel = proveLevel
+	sector.GetProveParam().Interval = getIntervalByProveLevel(proveLevel)
+	sector.GetProveParam().ProveBlockNum = fs.SECTOR_PROVE_BLOCK_NUM
 
-	return this.saveSectorProveParam(sector.sectorId)
+	return this.saveSectorProveParam(sector.GetSectorID())
 }
 
 func (this *SectorManager) GetAllSectorIds() ([]uint64, error) {
