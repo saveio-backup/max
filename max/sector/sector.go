@@ -179,6 +179,18 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 	return nil
 }
 
+func (this *Sector) GetFileHashList() []string {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
+	fileList := make([]string, 0)
+
+	for _, file := range this.fileList {
+		fileList = append(fileList, file.FileHash)
+	}
+	return fileList
+}
+
 func (this *Sector) IsFileInSector(fileHash string) bool {
 	this.lock.RLock()
 	defer this.lock.RUnlock()

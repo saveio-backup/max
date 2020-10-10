@@ -134,6 +134,11 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 		return fmt.Errorf("deleteSector no sector found with id %d", sectorId)
 	}
 
+	fileList := sector.GetFileHashList()
+	for _, fileHash := range fileList {
+		this.UpdateFileMap(fileHash, sectorId, false)
+	}
+
 	proveLevel := sector.GetProveLevel()
 	sectors, exist := this.sectors[proveLevel]
 	if !exist {
@@ -303,6 +308,6 @@ func getIntervalByProveLevel(proveLevel uint64) uint64 {
 	case fs.PROVE_LEVEL_LOW:
 		return fs.PROVE_PERIOD_LOW
 	default:
-	    panic("unknown prove level")
+		panic("unknown prove level")
 	}
 }

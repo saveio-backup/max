@@ -78,7 +78,8 @@ func TestSectorManager(t *testing.T) {
 	db := InitTestDB()
 	manager := InitSectorManager(db)
 
-	_, err := manager.CreateSector(1, 1, MIN_SECTOR_SIZE)
+	sectorId := uint64(1)
+	_, err := manager.CreateSector(sectorId, 1, MIN_SECTOR_SIZE)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,6 +104,23 @@ func TestSectorManager(t *testing.T) {
 		t.Fatalf("file added test failed,expect false")
 	}
 
+	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !manager.IsFileAdded(fileHash) {
+		t.Fatalf("file added test failed,expect true")
+	}
+
+	err = manager.DeleteSector(sectorId)
+	if err != nil {
+		t.Fatalf("deleteSector error %s", err)
+	}
+
+	if len(manager.fileSectorIdMap) != 0 {
+		t.Fatalf("fileSectorIdMap not cleared")
+	}
 }
 
 func TestGetFilePosBySectorIndex(t *testing.T) {
