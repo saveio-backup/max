@@ -121,3 +121,9 @@ func (this *MaxService) addSectorProveTask(sectorId uint64) error {
 	this.sectorProveTasks.Store(sectorId, struct{}{})
 	return nil
 }
+
+func (this *MaxService) deleteSectorProveTask(sectorId uint64) error {
+	log.Debugf("deleteSectorProveTask for sectorId %d", sectorId)
+	this.sectorProveTasks.Delete(sectorId)
+	return nil
+}
