@@ -2,6 +2,7 @@ package max
 
 import (
 	"github.com/saveio/themis/common/log"
+	"strconv"
 	"time"
 )
 
@@ -21,7 +22,6 @@ func (this *MaxService) startPdpCalculationService() {
 
 // process item in the pdp calculation queue
 func (this *MaxService) processPdpCalculationQueue() {
-	var err error
 	for this.pdpQueue.Len() > 0 {
 		item := this.pdpQueue.FirstItem()
 		if item == nil {
@@ -31,14 +31,40 @@ func (this *MaxService) processPdpCalculationQueue() {
 
 		pdpItem := item.Value.(PDPItem)
 
-		err = pdpItem.doPdpCalculation()
-		if err != nil {
-			err = pdpItem.onFailedPdpCalculation(err)
+		itemKey := pdpItem.getItemKey()
+		nextChalHeight := pdpItem.getPdpCalculationHeight()
+
+		needSubmit := false
+		// try find saved but not submitted result from db to reduce duplicate pdp calculation
+		proveData, err := this.getPdpCalculationResult(pdpItem, nextChalHeight)
+		if err != nil || proveData == nil {
+			err = pdpItem.doPdpCalculation()
 			if err != nil {
-				log.Errorf("onFailedPdpCalculation error: %s", err)
+				err = pdpItem.onFailedPdpCalculation(err)
+				if err != nil {
+					log.Errorf("onFailedPdpCalculation error: %s", err)
+				}
+			} else {
+				err = this.savePdpCalculationResult(pdpItem, pdpItem.getPdpCalculationHeight(), pdpItem.getPdpCalculationResult())
+				if err != nil {
+					log.Errorf("save pdp calculation result for pdp item %s error %s", itemKey, err)
+				} else {
+					log.Debugf("calculate and save pdp result success for pdp item %s", itemKey, item)
+					needSubmit = true
+				}
 			}
 		} else {
-			this.ScheduleForPdpSubmission(pdpItem)
+			needSubmit = true
+			log.Debugf("cached pdp result found for pdp item %s, height %d", itemKey, nextChalHeight)
+		}
+
+		if needSubmit {
+			err = this.ScheduleForPdpSubmission(pdpItem)
+			if err != nil {
+				log.Errorf("schedule for pdp submission for pdp item %s error %s", itemKey, err)
+			} else {
+				log.Debugf("schedule for pdp submission for pdp item %s success", itemKey)
+			}
 		}
 
 		// NOTE: cannot use pop here, since queue might have been updated
@@ -131,7 +157,18 @@ func (this *MaxService) processPdpSubmissionQueue() {
 			go func() {
 				defer this.submitting.Delete(itemKey)
 
-				txHash, err := pdpItem.doPdpSubmission()
+				var proveData []byte
+				var err error
+
+				height := pdpItem.getPdpSubmissionHeight()
+
+				proveData, err = this.getPdpCalculationResult(pdpItem, height)
+				if err != nil || proveData == nil {
+					log.Errorf("get pdp calculation result for pdp item %s error %s", itemKey, err)
+					return
+				}
+
+				txHash, err := pdpItem.doPdpSubmission(proveData)
 				if err != nil {
 					// TODO : on prove error need to delete the file
 					log.Errorf("doPdpSubmission for item %s error %s", itemKey, err)
@@ -167,4 +204,43 @@ func (this *MaxService) processPdpSubmissionQueue() {
 		}
 	}
 	return
+}
+
+func (this *MaxService) savePdpCalculationResult(pdpItem PDPItem, height uint32, proveData []byte) error {
+	itemKey := pdpItem.getItemKey()
+	if !pdpItem.shouldSavePdpResult() {
+		log.Debugf("savePdpCalculationResult, no need to save to db for %v", itemKey)
+		return nil
+	}
+
+	log.Debugf("save pdp calculation result for pdp item %s, height %d, proveData %v", pdpItem, height, proveData)
+	return this.savePdpResultToDB(pdpItem, height, proveData)
+}
+
+func (this *MaxService) getPdpCalculationResult(pdpItem PDPItem, height uint32) (proveData []byte, err error) {
+	itemKey := pdpItem.getItemKey()
+	if !pdpItem.shouldSavePdpResult() {
+		log.Debugf("getPdpCalculationResult, no need to save to db for %v", itemKey)
+		return pdpItem.getPdpCalculationResult(), nil
+	}
+
+	proveData, err = this.getPdpResultFromDB(pdpItem, height)
+	if err == nil {
+		log.Debugf("get pdp calculation result for pdp item %s, proveData %v", itemKey, proveData)
+	}
+	return proveData, err
+}
+
+const FILE_PDP_RESULT_KEY = "pdpresult:"
+
+func genPdpResultKey(pdpItem PDPItem, height uint32) string {
+	return FILE_PDP_RESULT_KEY + strconv.Itoa(int(height))
+}
+
+func (this *MaxService) savePdpResultToDB(pdpItem PDPItem, height uint32, proveData []byte) error {
+	return this.fsstore.PutData(genPdpResultKey(pdpItem, height), proveData)
+}
+
+func (this *MaxService) getPdpResultFromDB(pdpItem PDPItem, height uint32) ([]byte, error) {
+	return this.fsstore.GetData(genPdpResultKey(pdpItem, height))
 }

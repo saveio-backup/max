@@ -69,8 +69,8 @@ func (this *SectorPDPItem) onFailedPdpCalculation(err error) error {
 	return nil
 }
 
-func (this *SectorPDPItem) doPdpSubmission() (txHash []byte, err error) {
-	return this.getFsContract().SectorProve(this.SectorId, uint64(this.getPdpCalculationHeight()), this.ProveData)
+func (this *SectorPDPItem) doPdpSubmission(proveData []byte) (txHash []byte, err error) {
+	return this.getFsContract().SectorProve(this.SectorId, uint64(this.getPdpCalculationHeight()), proveData)
 }
 
 func (this *SectorPDPItem) onSuccessfulPdpSubmission() error {
@@ -346,6 +346,14 @@ func (this *SectorPDPItem) getPDPProveParamForFile(fileHash string) (*fs.ProvePa
 		return nil, err
 	}
 	return &pdpParam, nil
+}
+
+func (this *SectorPDPItem) shouldSavePdpResult() bool {
+	return false
+}
+
+func (this *SectorPDPItem) getPdpCalculationResult() []byte {
+	return this.ProveData
 }
 
 func getSectorIdString(sectorId uint64) string {

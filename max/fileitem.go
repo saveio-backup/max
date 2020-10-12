@@ -63,7 +63,7 @@ func (this *FilePDPItem) onFailedPdpCalculation(err error) error {
 	return this.getMaxService().deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_PDP_CALCULATION)
 }
 
-func (this *FilePDPItem) doPdpSubmission() ([]byte, error) {
+func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 	if this == nil {
 		log.Errorf("item for pdp submission is nil")
 		return nil, fmt.Errorf("item for pdp submission is nil")
@@ -75,7 +75,6 @@ func (this *FilePDPItem) doPdpSubmission() ([]byte, error) {
 
 	fileHash := this.FileHash
 	bakParam := this.BakParam
-	proveData := this.PdpResult
 	height := uint64(this.NextChalHeight)
 
 	sector, err := this.assignSectorForFile()
@@ -421,6 +420,14 @@ func (this *FilePDPItem) getFsContract() *fscontract.Fs {
 
 func (this *FilePDPItem) getAccountAddress() common.Address {
 	return this.getFsContract().DefAcc.Address
+}
+
+func (this *FilePDPItem) shouldSavePdpResult() bool {
+	return true
+}
+
+func (this *FilePDPItem) getPdpCalculationResult() []byte {
+	return this.PdpResult
 }
 
 var _ PDPItem = (*FilePDPItem)(nil)
