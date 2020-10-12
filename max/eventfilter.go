@@ -135,6 +135,8 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 		this.processDeleteFilesEvent(parsedEvent)
 	case "createSector":
 		this.processCreateSectorEvent(parsedEvent)
+	case "deleteSector":
+		this.processDeleteSectorEvent(parsedEvent)
 	default:
 		return
 	}
@@ -154,6 +156,19 @@ func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
 			SectorID:   sectorId,
 			ProveLevel: proveLevel,
 			Size:       size,
+		})
+	}
+}
+
+func (this *MaxService) processDeleteSectorEvent(event map[string]interface{}) {
+	walletAddr := event["walletAddr"].(string)
+	sectorId := event["sectorId"].(uint64)
+
+	address := this.getAccoutAddress()
+	if walletAddr == address.ToBase58() {
+		this.notifySectorEvent(&sector.SectorEvent{
+			Event:    sector.SECTOR_EVENT_DELETE,
+			SectorID: sectorId,
 		})
 	}
 }
