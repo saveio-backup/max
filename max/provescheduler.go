@@ -234,7 +234,7 @@ func (this *MaxService) getPdpCalculationResult(pdpItem PDPItem, height uint32) 
 const FILE_PDP_RESULT_KEY = "pdpresult:"
 
 func genPdpResultKey(pdpItem PDPItem, height uint32) string {
-	return FILE_PDP_RESULT_KEY + strconv.Itoa(int(height))
+	return FILE_PDP_RESULT_KEY + pdpItem.getItemKey() + strconv.Itoa(int(height))
 }
 
 func (this *MaxService) savePdpResultToDB(pdpItem PDPItem, height uint32, proveData []byte) error {
