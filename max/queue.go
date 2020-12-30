@@ -69,14 +69,15 @@ func NewPriorityQueue(size int) *PriorityQueue {
 }
 
 func (this *PriorityQueue) Push(item *Item) error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
 	if item == nil {
 		return fmt.Errorf("item is nil")
 	}
 	if this.Items.Len() >= this.Size {
 		return fmt.Errorf("queue is full")
 	}
-	this.lock.Lock()
-	defer this.lock.Unlock()
 
 	if this.indexByKey(item.Key) != -1 {
 		return fmt.Errorf("item exist for key %v", item.Key)
@@ -88,7 +89,7 @@ func (this *PriorityQueue) Push(item *Item) error {
 
 func (this *PriorityQueue) Pop() *Item {
 	this.lock.Lock()
-	this.lock.Unlock()
+	defer this.lock.Unlock()
 
 	if this.Items.Len() == 0 {
 		return nil
@@ -101,11 +102,12 @@ func (this *PriorityQueue) Len() int {
 }
 
 func (this *PriorityQueue) FirstItem() *Item {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
 	if this.Items.Len() == 0 {
 		return nil
 	}
-	this.lock.Lock()
-	defer this.lock.Unlock()
 	return this.Items[0]
 }
 
@@ -159,8 +161,8 @@ func (this *PriorityQueue) itemByKey(key interface{}) *Item {
 }
 
 func (this *PriorityQueue) Remove(key interface{}) (removed bool) {
-	this.lock.RLock()
-	defer this.lock.RUnlock()
+	this.lock.Lock()
+	defer this.lock.Unlock()
 
 	index := this.indexByKey(key)
 	if index == -1 {
