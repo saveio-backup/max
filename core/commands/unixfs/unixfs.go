@@ -4,7 +4,7 @@ import (
 	cmds "github.com/saveio/max/commands"
 	e "github.com/saveio/max/core/commands/e"
 
-	"gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
 )
 
 var UnixFSCmd = &cmds.Command{

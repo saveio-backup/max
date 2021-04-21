@@ -7,7 +7,7 @@ import (
 	nsys "github.com/saveio/max/namesys"
 	path "github.com/saveio/max/path"
 	ft "github.com/saveio/max/unixfs"
-	ci "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
+	ci "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 )
 
 // InitializeKeyspace sets the ipns record for the given key to

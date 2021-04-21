@@ -9,7 +9,7 @@ import (
 	"github.com/saveio/max/core"
 	fsrepo "github.com/saveio/max/repo/fsrepo"
 
-	humanize "gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
+	humanize "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
 )
 
 type Stat struct {

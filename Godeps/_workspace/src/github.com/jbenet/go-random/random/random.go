@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
 
 	random "github.com/saveio/max/Godeps/_workspace/src/github.com/jbenet/go-random"
 )

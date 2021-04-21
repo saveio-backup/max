@@ -7,7 +7,7 @@ import (
 	keystore "github.com/saveio/max/keystore"
 	"github.com/saveio/max/repo/config"
 
-	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	ma "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
 )
 
 var errTODO = errors.New("TODO: mock repo")

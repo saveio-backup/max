@@ -6,8 +6,8 @@ package notifier
 import (
 	"sync"
 
-	process "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
-	ratelimit "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/ratelimit"
+	process "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	ratelimit "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/ratelimit"
 )
 
 // Notifiee is a generic interface. Clients implement

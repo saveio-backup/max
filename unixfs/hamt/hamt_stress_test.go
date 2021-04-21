@@ -11,7 +11,7 @@ import (
 	mdtest "github.com/saveio/max/merkledag/test"
 	ft "github.com/saveio/max/unixfs"
 
-	ipld "gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
+	ipld "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
 )
 
 func getNames(prefix string, count int) []string {

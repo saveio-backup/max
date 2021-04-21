@@ -9,7 +9,7 @@ import (
 	mdag "github.com/saveio/max/merkledag"
 	mdagtest "github.com/saveio/max/merkledag/test"
 
-	ipld "gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
+	ipld "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
 )
 
 func TestDFSPreNoSkip(t *testing.T) {

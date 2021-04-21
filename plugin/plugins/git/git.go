@@ -9,10 +9,10 @@ import (
 	"github.com/saveio/max/core/coredag"
 	"github.com/saveio/max/plugin"
 
-	git "gx/ipfs/QmX5GwZzNJ2PhFDPW12MjQWtmE21i4UnHQ2uKtYkp4Ad7a/go-ipld-git"
-	mh "gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
-	"gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
-	"gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
+	git "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmX5GwZzNJ2PhFDPW12MjQWtmE21i4UnHQ2uKtYkp4Ad7a/go-ipld-git"
+	mh "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
 )
 
 // Plugins is exported list of plugins that will be loaded

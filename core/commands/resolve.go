@@ -13,7 +13,7 @@ import (
 	nsopts "github.com/saveio/max/namesys/opts"
 	path "github.com/saveio/max/path"
 
-	"gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
 )
 
 type ResolvedPath struct {

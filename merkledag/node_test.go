@@ -8,7 +8,7 @@ import (
 	. "github.com/saveio/max/merkledag"
 	mdtest "github.com/saveio/max/merkledag/test"
 
-	ipld "gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
+	ipld "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
 )
 
 func TestRemoveLink(t *testing.T) {

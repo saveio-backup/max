@@ -8,7 +8,7 @@ import (
 
 	coreapi "github.com/saveio/max/core/coreapi"
 
-	mh "gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
+	mh "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
 
 	opt "github.com/saveio/max/core/coreapi/interface/options"
 )

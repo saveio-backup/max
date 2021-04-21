@@ -13,7 +13,7 @@ import (
 	nodeMount "github.com/saveio/max/fuse/node"
 	config "github.com/saveio/max/repo/config"
 
-	"gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
 )
 
 var MountCmd = &cmds.Command{

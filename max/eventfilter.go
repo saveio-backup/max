@@ -3,12 +3,13 @@ package max
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"time"
+
 	ldb "github.com/saveio/max/max/leveldbstore"
 	"github.com/saveio/max/max/sector"
 	"github.com/saveio/themis/common/log"
 	"github.com/saveio/themis/smartcontract/service/native/utils"
-	"reflect"
-	"time"
 )
 
 const LATEST_HEIGHT_KEY = "latestheight:"
@@ -82,7 +83,7 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 }
 
 func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress string) ([]map[string]interface{}, error) {
-	log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
+	// log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
 	var eventRe = make([]map[string]interface{}, 0)
 
 	raws, err := this.chain.GetSmartContractEventsByBlock(blockHeight)
@@ -92,7 +93,7 @@ func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress st
 	}
 
 	if len(raws) == 0 {
-		log.Debugf("getContractEvents no event found")
+		// log.Debugf("getContractEvents no event found")
 		return nil, nil
 	}
 	for _, raw := range raws {

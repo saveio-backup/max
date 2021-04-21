@@ -9,7 +9,7 @@ import (
 	coreapi "github.com/saveio/max/core/coreapi"
 	config "github.com/saveio/max/repo/config"
 
-	id "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/protocol/identify"
+	id "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/protocol/identify"
 )
 
 type GatewayConfig struct {

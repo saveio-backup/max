@@ -8,7 +8,7 @@ import (
 
 	opts "github.com/saveio/max/namesys/opts"
 	path "github.com/saveio/max/path"
-	isd "gx/ipfs/QmZmmuAXgX73UQmX1jRKjTGmjzq24Jinqkq8vzkBtno4uX/go-is-domain"
+	isd "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmZmmuAXgX73UQmX1jRKjTGmjzq24Jinqkq8vzkBtno4uX/go-is-domain"
 )
 
 type LookupTXTFunc func(name string) (txt []string, err error)

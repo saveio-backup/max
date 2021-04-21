@@ -1,0 +1,91 @@
+{
+  "author": "stebalien",
+  "bugs": {},
+  "gx": {
+    "dvcsimport": "github.com/libp2p/go-libp2p-pubsub-router"
+  },
+  "gxDependencies": [
+    {
+      "author": "whyrusleeping",
+      "hash": "QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP",
+      "name": "go-cid",
+      "version": "0.7.22"
+    },
+    {
+      "author": "jbenet",
+      "hash": "QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i",
+      "name": "go-datastore",
+      "version": "2.4.1"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "Qmd8UZEDddMaCnQ1G5eSrUhN3coX19V7SyXNQGWnAvUsnT",
+      "name": "go-ipfs-ds-help",
+      "version": "0.0.5"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmPdKqUcHGFdeSpvjVoaTRPPstGif9GBZb5Q56RVw9o69A",
+      "name": "go-ipfs-util",
+      "version": "1.2.8"
+    },
+    {
+      "hash": "QmRREK2CAZ5Re2Bd9zZFG6FeYDppUWt5cMgsoUEp3ktgSr",
+      "name": "go-log",
+      "version": "1.5.5"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmRXefkwjreRT6XfYh3Ag4hsVnWBbpcUicGJPcg8TWbhBK",
+      "name": "go-libp2p-floodsub",
+      "version": "0.9.23"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmVdU678uqPAfGgrrrn7zPz2yttmZTYbowF56TeNFecWzW",
+      "name": "go-libp2p-blankhost",
+      "version": "0.3.5"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmQ1hwb95uSSZR8jSPJysnfHxBDQAykSXsmz5TwTzxjq2Z",
+      "name": "go-libp2p-host",
+      "version": "3.0.5"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmYLXCWN2myozZpx8Wx4UjrRuQuhY3YtWoMi6SHaXii6aM",
+      "name": "go-libp2p-peerstore",
+      "version": "1.4.23"
+    },
+    {
+      "hash": "QmUTQSGgjs8CHm9yBcUHicpRs7C9abhyZiBwjzCUp1pNgX",
+      "name": "go-libp2p-record",
+      "version": "4.1.5"
+    },
+    {
+      "hash": "QmewrvpGvgK9qkCtXsGNwXiQzyux4jcHNjoyVrGdsgtNK5",
+      "name": "go-libp2p-routing",
+      "version": "2.4.6"
+    },
+    {
+      "author": "Stebalien",
+      "hash": "QmVgeNSg3ycA5BEKXEx5Pgy73iwVDEa8pQ5GKWrXUr4YED",
+      "name": "go-libp2p-routing-helpers",
+      "version": "0.2.7"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmdjC8HtKZpEufBL1u7WxvQn78Lqq2Wk31NJS8WvFX3crB",
+      "name": "go-libp2p-swarm",
+      "version": "3.0.7"
+    }
+  ],
+  "gxVersion": "0.12.1",
+  "language": "go",
+  "license": "",
+  "name": "go-libp2p-pubsub-router",
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "0.3.9"
+}
+

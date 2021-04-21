@@ -3,7 +3,7 @@
 package util
 
 import (
-	unix "gx/ipfs/QmPXvegq26x982cQjSfbTvSzZXn7GiaMwhhVPHkeTEhrPT/sys/unix"
+	unix "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmPXvegq26x982cQjSfbTvSzZXn7GiaMwhhVPHkeTEhrPT/sys/unix"
 )
 
 func init() {

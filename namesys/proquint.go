@@ -7,7 +7,7 @@ import (
 
 	opts "github.com/saveio/max/namesys/opts"
 	path "github.com/saveio/max/path"
-	proquint "gx/ipfs/QmYnf27kzqR2cxt6LFZdrAFJuQd6785fTkBvMuEj9EeRxM/proquint"
+	proquint "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmYnf27kzqR2cxt6LFZdrAFJuQd6785fTkBvMuEj9EeRxM/proquint"
 )
 
 type ProquintResolver struct{}

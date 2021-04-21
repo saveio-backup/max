@@ -9,7 +9,7 @@ import (
 	namesys "github.com/saveio/max/namesys"
 	nsopts "github.com/saveio/max/namesys/opts"
 
-	"gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
 )
 
 var DNSCmd = &cmds.Command{

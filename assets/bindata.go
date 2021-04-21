@@ -7,13 +7,13 @@
 // init-doc/quick-start
 // init-doc/readme
 // init-doc/security-notes
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/LICENSE
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/README.md
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/dir-index-uncat.html
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/dir-index.html
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/index.go
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/knownIcons.txt
-// ../../../../gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/package.json
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/LICENSE
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/README.md
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/dir-index-uncat.html
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/dir-index.html
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/index.go
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/knownIcons.txt
+// ../../../../github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmdZ4PvPHFQVLLEve7DgoKDcSY19wwpGBB1GKjjKi2rEL1/dir-index-html/package.json
 // DO NOT EDIT!
 
 package assets

@@ -12,7 +12,7 @@ import (
 	config "github.com/saveio/max/repo/config"
 	"github.com/saveio/max/repo/fsrepo"
 
-	"gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
+	"github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmceUdzxkimdYsgtX733uNgzf1DLHyBKN6ehGSp85ayppM/go-ipfs-cmdkit"
 )
 
 type BootstrapOutput struct {

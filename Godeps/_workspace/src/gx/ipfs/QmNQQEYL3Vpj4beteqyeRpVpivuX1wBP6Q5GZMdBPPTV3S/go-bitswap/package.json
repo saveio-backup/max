@@ -1,0 +1,102 @@
+{
+  "author": "why",
+  "bugs": {
+    "url": "https://github.com/ipfs/go-bitswap"
+  },
+  "gx": {
+    "dvcsimport": "github.com/ipfs/go-bitswap"
+  },
+  "gxDependencies": [
+    {
+      "author": "whyrusleeping",
+      "hash": "QmUDzeFgYrRmHL2hUB6NZmqcBVQtUzETwmFRUc9onfSSHr",
+      "name": "go-libp2p",
+      "version": "6.0.8"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "Qma19TdQ7W26jbfuPgdo9Zi4qtjks1zeXzX86mtEYWYCiw",
+      "name": "go-ipfs-routing",
+      "version": "0.0.17"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmXG74iiKQnDstVQq9fPFQEB6JTNSWBbAWE1qsq6L4E5sR",
+      "name": "go-testutil",
+      "version": "1.2.6"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmcZSzKEM5yDfpZbeEEZaVmaZ1zXm6JWTbrQZSB8hCVPzk",
+      "name": "go-libp2p-peer",
+      "version": "2.3.6"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmYVNvtQkeZ6AKSwDrjQTs432QtL6umrrK41EBq3cu7iSP",
+      "name": "go-cid",
+      "version": "0.7.22"
+    },
+    {
+      "author": "whyrusleeping",
+      "hash": "QmdxUuburamoF6zF9qjeQC4WYcWGbWuRmdLacMEsW8ioD8",
+      "name": "gogo-protobuf",
+      "version": "0.0.0"
+    },
+    {
+      "author": "stebalien",
+      "hash": "QmVzK524a2VWLqyvtBeiHKsUAWYgeAk4DBeZoY7vpNPNRx",
+      "name": "go-block-format",
+      "version": "0.1.8"
+    },
+    {
+      "author": "ipfs",
+      "hash": "QmekzFM3hPZjTjUFGTABdQkEnQ3PTiMstY198PwSFr5w1Q",
+      "name": "go-metrics-interface",
+      "version": "0.2.0"
+    },
+    {
+      "author": "why",
+      "hash": "QmdbxjQWogRCHRaxhhGnYdT1oQJzL9GdqSKzCdqWr85AP2",
+      "name": "pubsub",
+      "version": "1.0.0"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "QmZUbTDJ39JpvtFCSubiWeUTQRvMA1tVE5RZCJrY4oeAsC",
+      "name": "go-ipfs-pq",
+      "version": "0.0.1"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "QmYqPGpZ9Yemr55xus9DiEztkns6Jti5XJ7hC94JbvkdqZ",
+      "name": "go-ipfs-blocksutil",
+      "version": "0.0.3"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "QmRNFh4wm6FgTDrtsWmnvEP9NTuEa3Ykf72y1LXCyevbGW",
+      "name": "go-ipfs-blockstore",
+      "version": "0.0.14"
+    },
+    {
+      "author": "hector",
+      "hash": "QmRMGdC6HKdLsPDABL9aXPDidrpmEHzJqFWSvshkbn9Hj8",
+      "name": "go-ipfs-flags",
+      "version": "0.0.1"
+    },
+    {
+      "author": "hsanjuan",
+      "hash": "Qmc2faLf7URkHpsbfYM4EMbr8iSAcGAe8VPgVi64HVnwji",
+      "name": "go-ipfs-exchange-interface",
+      "version": "0.0.3"
+    }
+  ],
+  "gxVersion": "0.12.1",
+  "language": "go",
+  "license": "",
+  "name": "go-bitswap",
+  "releaseCmd": "git commit -a -m \"gx publish $VERSION\"",
+  "version": "1.0.6"
+}
+

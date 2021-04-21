@@ -18,9 +18,9 @@ import (
 
 	homedir "github.com/saveio/max/Godeps/_workspace/src/github.com/mitchellh/go-homedir"
 
-	process "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	process "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
 
-	fsnotify "gx/ipfs/QmczzCMvJ3HV57WBKDy8b4ucp7quT325JjDbixYRS5Pwvv/fsnotify.v1"
+	fsnotify "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmczzCMvJ3HV57WBKDy8b4ucp7quT325JjDbixYRS5Pwvv/fsnotify.v1"
 )
 
 var http = flag.Bool("http", false, "expose ONT_IPFS HTTP API")

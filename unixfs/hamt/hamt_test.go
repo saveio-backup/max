@@ -14,7 +14,7 @@ import (
 	dagutils "github.com/saveio/max/merkledag/utils"
 	ft "github.com/saveio/max/unixfs"
 
-	ipld "gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
+	ipld "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/Qme5bWv7wtjUNGsK2BNGVUFPKiuxWrsqrtvYwCLRw8YFES/go-ipld-format"
 )
 
 func shuffle(seed int64, arr []string) {

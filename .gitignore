@@ -24,3 +24,5 @@ vendor
 go-ipfs-source.tar.gz
 cmd/ipfs/*wallet.dat
 cmd/ont-ipfs/*.log
+.idea
+.idea/

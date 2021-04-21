@@ -9,7 +9,7 @@ import (
 
 	"github.com/saveio/max/repo/config"
 	"github.com/saveio/max/thirdparty/assert"
-	datastore "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
+	datastore "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
 )
 
 // swap arg order
