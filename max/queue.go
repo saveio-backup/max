@@ -69,21 +69,24 @@ func NewPriorityQueue(size int) *PriorityQueue {
 }
 
 func (this *PriorityQueue) Push(item *Item) error {
-	this.lock.Lock()
-	defer this.lock.Unlock()
-
 	if item == nil {
 		return fmt.Errorf("item is nil")
 	}
+
+	this.lock.Lock()
 	if this.Items.Len() >= this.Size {
+		this.lock.Unlock()
 		return fmt.Errorf("queue is full")
 	}
 
 	if this.indexByKey(item.Key) != -1 {
+		this.lock.Unlock()
 		return fmt.Errorf("item exist for key %v", item.Key)
 	}
 	heap.Push(&this.Items, item)
-	this.PushNotify <- struct{}{}
+	this.lock.Unlock()
+
+	go this.NotifyPush()
 	return nil
 }
 
@@ -172,6 +175,11 @@ func (this *PriorityQueue) Remove(key interface{}) (removed bool) {
 	heap.Init(&this.Items)
 	return true
 }
+
 func (this *PriorityQueue) GetPushNotifyChan() chan struct{} {
 	return this.PushNotify
+}
+
+func (this *PriorityQueue) NotifyPush() {
+	this.PushNotify <- struct{}{}
 }
