@@ -207,7 +207,10 @@ func TestSectorDelete(t *testing.T) {
 func printSectorManager(m *SectorManager, t *testing.T) {
 	t.Logf("pirntSectorManager data :\n")
 	t.Logf("manager : %+v\n", m)
-	for id, sector := range m.sectorIdMap {
+
+	m.sectorIdMap.Range(func(key, value interface{}) bool {
+		id := key.(uint64)
+		sector := value.(*Sector)
 		t.Logf("sector %d:\n", id)
 		t.Logf("sector data %+v\n", sector)
 
@@ -218,7 +221,8 @@ func printSectorManager(m *SectorManager, t *testing.T) {
 		for _, file := range sector.GetCandidateFileList() {
 			t.Logf("candidate file %s, block count %d, block size %d\n", file.FileHash, file.BlockCount, file.BlockSize)
 		}
-	}
+		return true
+	})
 }
 
 type testDB struct {

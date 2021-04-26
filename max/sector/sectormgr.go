@@ -15,8 +15,8 @@ const (
 type SectorManager struct {
 	lock            sync.RWMutex
 	sectors         map[uint64]map[uint64]*Sector // proveLevel -> sectorId -> sector
-	sectorIdMap     map[uint64]*Sector            // sector id -> sector
-	fileSectorIdMap map[string]uint64             // fileHash -> sector id
+	sectorIdMap     *sync.Map                     // sector id -> sector
+	fileSectorIdMap *sync.Map                     // fileHash -> sector id
 	db              DB                            // db for persist sector data
 	kill            chan struct{}
 	sectorEventChan chan *SectorEvent // channel for sector create/delete event
@@ -39,8 +39,8 @@ type SectorEvent struct {
 func InitSectorManager(db DB) *SectorManager {
 	return &SectorManager{
 		sectors:         make(map[uint64]map[uint64]*Sector),
-		sectorIdMap:     make(map[uint64]*Sector),
-		fileSectorIdMap: make(map[string]uint64),
+		sectorIdMap:     new(sync.Map),
+		fileSectorIdMap: new(sync.Map),
 		db:              db,
 		kill:            make(chan struct{}),
 		sectorEventChan: make(chan *SectorEvent, 100),
@@ -68,7 +68,7 @@ func (this *SectorManager) StartSectorManagerService() {
 				go func() {
 					_, err := this.CreateSector(event.SectorID, event.ProveLevel, event.Size)
 					if err != nil {
-						log.Errorf("[SectorManagerService] create sector %d error : %s", event.SectorID, err)
+						log.Warnf("[SectorManagerService] create sector %d error : %s", event.SectorID, err)
 						return
 					}
 					log.Debugf("[SectorManagerService] create sector %d success", event.SectorID)
@@ -123,7 +123,7 @@ func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size
 	sector = InitSector(this, sectorId, size)
 	sectors[sector.GetSectorID()] = sector
 
-	this.sectorIdMap[sectorId] = sector
+	this.sectorIdMap.Store(sectorId, sector)
 
 	err := this.setProveParam(sector, proveLevel)
 	if err != nil {
@@ -162,7 +162,7 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 	}
 
 	delete(sectors, sector.GetSectorID())
-	delete(this.sectorIdMap, sector.GetSectorID())
+	this.sectorIdMap.Delete(sector.GetSectorID())
 
 	err := this.saveSectorList()
 	if err != nil {
@@ -187,11 +187,11 @@ func (this *SectorManager) DeleteSector(sectorId uint64) error {
 }
 
 func (this *SectorManager) GetSectorBySectorId(sectorId uint64) *Sector {
-	sector, exist := this.sectorIdMap[sectorId]
+	sector, exist := this.sectorIdMap.Load(sectorId)
 	if !exist {
 		return nil
 	}
-	return sector
+	return sector.(*Sector)
 }
 
 // try add a file with a fileInfo to blocks which has enough size for file
@@ -216,6 +216,34 @@ func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCoun
 
 	this.UpdateFileMap(fileHash, sectorId, true)
 	log.Debugf("Sector AddFile: file %s is added to sector %d", fileHash, sectorId)
+	return sector, nil
+
+}
+
+func (this *SectorManager) AddFileToSector(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64, sectorId uint64) (*Sector, error) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	if this.IsFileAdded(fileHash) {
+		return nil, fmt.Errorf("addFileToSector error, file %s is already added", fileHash)
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		return nil, fmt.Errorf("addFileToSector error, sector %d not found", sectorId)
+	}
+
+	if sector.GetProveLevel() != proveLevel {
+		return nil, fmt.Errorf("addFileToSector error, sector %d level not match", sectorId)
+	}
+
+	err := sector.AddFileToSector(fileHash, blockCount, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("addFileToSector error %v", err)
+	}
+
+	this.UpdateFileMap(fileHash, sectorId, true)
+	log.Debugf("Sector AddFileToSector: file %s is added to sector %d", fileHash, sectorId)
 	return sector, nil
 
 }
@@ -327,7 +355,7 @@ func (this *SectorManager) MoveCandidateFileToSector(fileHash string) error {
 func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sector, fileSize uint64) uint64 {
 	candidates := make([]uint64, 0)
 	for sectorId, sector := range sectors {
-		if sector.GetSectorRemainingSize() >= fileSize {
+		if sector.GetSectorRemainingSizeNoLock() >= fileSize {
 			candidates = append(candidates, sectorId)
 		}
 	}
@@ -344,8 +372,10 @@ func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sect
 }
 
 func (this *SectorManager) FindMatchingSectorId(proveLevel uint64, fileSize uint64) (uint64, error) {
-	this.lock.RLock()
-	defer this.lock.RUnlock()
+	// when many files are uploaded concurrently, this lock may block for a long time which may lead to reply
+	// ack timeout for upload request. It may be caused by sector lock,
+	//this.lock.RLock()
+	//defer this.lock.RUnlock()
 
 	return this.findMatchingSectorIdNoLock(proveLevel, fileSize)
 }
@@ -368,7 +398,7 @@ func (this *SectorManager) findMatchingSectorIdNoLock(proveLevel uint64, fileSiz
 }
 
 func (this *SectorManager) IsFileAdded(fileHash string) bool {
-	_, exist := this.fileSectorIdMap[fileHash]
+	_, exist := this.fileSectorIdMap.Load(fileHash)
 	if exist {
 		return true
 	}
@@ -376,19 +406,21 @@ func (this *SectorManager) IsFileAdded(fileHash string) bool {
 }
 
 func (this *SectorManager) GetFileSectorId(fileHash string) uint64 {
-	sectorId, exist := this.fileSectorIdMap[fileHash]
+	sectorId, exist := this.fileSectorIdMap.Load(fileHash)
 	if !exist {
+		log.Debugf("GetFileSectorId file %s, no sector found", fileHash)
 		return 0
 	}
-	return sectorId
+	log.Debugf("GetFileSectorId file %s is in sector %d", fileHash, sectorId)
+	return sectorId.(uint64)
 }
 
 // update file map no lock
 func (this *SectorManager) UpdateFileMap(fileHash string, sectorId uint64, isAdd bool) {
 	if isAdd {
-		this.fileSectorIdMap[fileHash] = sectorId
+		this.fileSectorIdMap.Store(fileHash, sectorId)
 	} else {
-		delete(this.fileSectorIdMap, fileHash)
+		this.fileSectorIdMap.Delete(fileHash)
 	}
 }
 
@@ -410,13 +442,13 @@ func (this *SectorManager) setProveParam(sector *Sector, proveLevel uint64) erro
 }
 
 func (this *SectorManager) GetAllSectorIds() ([]uint64, error) {
-	this.lock.RLock()
-	defer this.lock.RUnlock()
-
 	sectorIds := make([]uint64, 0)
-	for sectorId, _ := range this.sectorIdMap {
+	this.sectorIdMap.Range(func(key, value interface{}) bool {
+		sectorId := key.(uint64)
 		sectorIds = append(sectorIds, sectorId)
-	}
+		return true
+	})
+
 	return sectorIds, nil
 }
 
