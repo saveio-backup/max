@@ -101,20 +101,8 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 	}
 
 	log.Debugf("call fileProve for file %s success with txHash %s", fileHash, getTxHashString(txHash))
-	return txHash, nil
-}
-func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
-	fsContract := this.getFsContract()
-	fileHash := this.FileHash
-	height := this.NextChalHeight
+
 	max := this.getMaxService()
-	sectorId := this.sectorId
-
-	sector := max.sectorManager.GetSectorBySectorId(sectorId)
-	if sector == nil {
-		panic("sector not exist")
-	}
-
 	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	log.Debugf("proveDetails for file %s: %+v", fileHash, proveDetails)
 	if err != nil {
@@ -123,7 +111,7 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 		// when proveDetail not found, fileInfo may have been deleted
 		max.rpcCache.deleteProveDetails(fileHash)
 
-		return fmt.Errorf("get prove details after success prove error : %s", err)
+		return nil, fmt.Errorf("get prove details after success prove error : %s", err)
 	} else {
 		log.Debugf("try add prove details to cache after success prove")
 		found := false
@@ -141,31 +129,47 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 			log.Debugf("no matching prove detail found, delete cached prove details")
 			max.rpcCache.deleteProveDetails(fileHash)
 
-			return fmt.Errorf("no matching prove detail found, delete cached prove details")
+			return nil, fmt.Errorf("no matching prove detail found, delete cached prove details")
 		}
+	}
+	return txHash, nil
+}
+func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
+	fileHash := this.FileHash
+	height := this.NextChalHeight
+	max := this.getMaxService()
+	sectorId := this.sectorId
+
+	sector := max.sectorManager.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		panic("sector not exist")
 	}
 
 	if this.ExpireState == EXPIRE_LAST_PROVE {
 		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
+		err := sector.DeleteCandidateFile(this.FileHash)
+		if err != nil {
+			log.Errorf("deleteCandidateFile for file %s error %s", this.FileHash, err)
+		}
 		max.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
 		return nil
 	}
 
 	if this.FirstProve {
+		err := sector.MoveCandidateFileToFileList(this.FileHash)
+		if err != nil {
+			log.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
+			return fmt.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
+		}
+
 		// saves the first prove height to check if fileinfo is deleted then added agian
-		err := max.saveProveTask(fileHash, 0, 0, 0,
+		err = max.saveProveTask(fileHash, 0, 0, 0,
 			common.ADDRESS_EMPTY, uint64(height), this.FileInfo.FileProveParam)
 		if err != nil {
 			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
 			return err
 		}
 		log.Debugf("save prove task for fileHash %s with first prove height %d after first prove", fileHash, height)
-
-		err = sector.MoveCandidateFileToFileList(this.FileHash)
-		if err != nil {
-			log.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
-			return fmt.Errorf("MoveCandidateFileToFileList for file %s onSuccessfulPdpSubmission error %s", this.FileHash, err)
-		}
 
 		err = this.processForSectorProve()
 		if err != nil {
@@ -236,7 +240,7 @@ func (this *FilePDPItem) onFailedPdpSubmission(err error) error {
 
 		err := sector.DeleteCandidateFile(this.FileHash)
 		if err != nil {
-			log.Errorf("deleteCandidateFile for file %d onFailedPdpSubmission error %s", this.FileHash, err)
+			log.Errorf("deleteCandidateFile for file %s onFailedPdpSubmission error %s", this.FileHash, err)
 		}
 	}
 
