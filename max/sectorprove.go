@@ -97,7 +97,7 @@ func (this *MaxService) processCandidateFileSynchronization(sector *sector.Secto
 	for _, file := range candidateFileList {
 		index, exist := fileMap[file.FileHash]
 		if !exist {
-			err = sector.DeleteCandidateFile(file.FileHash)
+			err = this.sectorManager.DeleteCandidateFile(file.FileHash)
 			if err != nil {
 				log.Errorf("sector %d deleteCandidateFile error %s", sectorId, err)
 			}

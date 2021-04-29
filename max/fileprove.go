@@ -83,6 +83,17 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		}
 	}
 
+	proveParam, err := this.getProveTask(fileHash)
+	if proveParam == nil {
+		err = this.saveProveTask(fileHash, 0, 0, 0,
+			common.ADDRESS_EMPTY, 0, nil)
+		if err != nil {
+			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
+			return err
+		}
+		log.Debugf("saveProveTask when task not found")
+	}
+
 	this.provetasks.Store(fileHash, struct{}{})
 
 	return nil
@@ -250,6 +261,11 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_FILE_RENEWED)
 			return nil
 		}
+
+		if param.FirstProveHeight != 0 {
+			log.Debugf("no need prove file when first prove done")
+			return nil
+		}
 	}
 
 	height, hash := this.getCurrentBlockHeightAndHash()
@@ -288,6 +304,51 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		if !found {
 			log.Debugf("[proveFile] cannot find matching prove detail for fileHash : %s", fileHash)
 			return fmt.Errorf("prove detail not found for fileHash %s", fileHash)
+		}
+
+		addedToSector := false
+		// process the case when prove record not found on first pdp submission
+		sectorId := this.sectorManager.GetFileSectorId(fileHash)
+		if sectorId == 0 {
+			for _, sectorRef := range fileInfo.SectorRefs {
+				if sectorRef.NodeAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+					// find matching file info, add  to sector
+					_, err = this.sectorManager.AddFileToSector(fileInfo.ProveLevel, fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize, sectorRef.SectorID)
+					if err != nil {
+						log.Errorf("AddFileToSector for file %s error %s", fileHash, err)
+						return fmt.Errorf("AddFileToSector for file %s error %s", fileHash, err)
+					}
+					addedToSector = true
+				}
+			}
+		} else {
+			sector := this.sectorManager.GetSectorBySectorId(sectorId)
+			if sector == nil {
+				log.Errorf("sector %d not exist", sectorId)
+				return fmt.Errorf("sector %d not exist", sectorId)
+			}
+			if sector.IsCandidateFile(fileHash) {
+				err = this.sectorManager.MoveCandidateFileToSector(fileHash)
+				if err != nil {
+					log.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
+					return fmt.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
+				}
+				addedToSector = true
+			}
+		}
+
+		if addedToSector {
+			log.Debugf("file %s has been added to sector %d when prove record found", fileHash, sectorId)
+
+			// saves the first prove height to check if fileinfo is deleted then added agian
+			err = this.saveProveTask(fileHash, 0, 0, 0,
+				common.ADDRESS_EMPTY, uint64(height), fileInfo.FileProveParam)
+			if err != nil {
+				log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
+				return err
+			}
+			log.Debugf("saveProveTask for file % with firstProveHeight %d", fileHash, height)
+			return nil
 		}
 
 		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)

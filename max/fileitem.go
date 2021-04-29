@@ -11,6 +11,7 @@ import (
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
 	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
+	"strings"
 )
 
 type FilePDPItem struct {
@@ -110,6 +111,8 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 		// delete cached prove details to force getting prove details from contract for next prove
 		// when proveDetail not found, fileInfo may have been deleted
 		max.rpcCache.deleteProveDetails(fileHash)
+		// delete the file info to get file info from chain for sectorRef
+		max.rpcCache.deleteFileInfo(fileHash)
 
 		return nil, fmt.Errorf("get prove details after success prove error : %s", err)
 	} else {
@@ -128,6 +131,8 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 		} else {
 			log.Debugf("no matching prove detail found, delete cached prove details")
 			max.rpcCache.deleteProveDetails(fileHash)
+			// delete the file info to get file info from chain for sectorRef
+			max.rpcCache.deleteFileInfo(fileHash)
 
 			return nil, fmt.Errorf("no matching prove detail found, delete cached prove details")
 		}
@@ -147,7 +152,7 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 
 	if this.ExpireState == EXPIRE_LAST_PROVE {
 		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
-		err := sector.DeleteCandidateFile(this.FileHash)
+		err := max.sectorManager.DeleteCandidateFile(this.FileHash)
 		if err != nil {
 			log.Errorf("deleteCandidateFile for file %s error %s", this.FileHash, err)
 		}
@@ -200,7 +205,7 @@ func (this *FilePDPItem) processForSectorProve() error {
 	max := this.getMaxService()
 
 	sectorId := this.sectorId
-	fileHash := this.FileHash
+	//fileHash := this.FileHash
 
 	sector := max.sectorManager.GetSectorBySectorId(sectorId)
 	if sector == nil {
@@ -222,30 +227,25 @@ func (this *FilePDPItem) processForSectorProve() error {
 		}
 	}
 
-	// remove the task no more file prove needed after first success file prove
-	// keep prove param in db for sector prove
-	err := max.deleteProveTask(fileHash, false)
-	if err != nil {
-		log.Errorf("processForSectorProve, deleteProveTask for file %s error %s", fileHash, err)
-		return nil
-	}
 	return nil
 }
 
 func (this *FilePDPItem) onFailedPdpSubmission(err error) error {
+	log.Debugf("onFailedPdpSubmission for file %s with error %s", this.FileHash, err)
+
 	max := this.getMaxService()
 
 	if this.sectorId != 0 {
-		sector := max.sectorManager.GetSectorBySectorId(this.sectorId)
-
-		err := sector.DeleteCandidateFile(this.FileHash)
+		err := max.sectorManager.DeleteCandidateFile(this.FileHash)
 		if err != nil {
 			log.Errorf("deleteCandidateFile for file %s onFailedPdpSubmission error %s", this.FileHash, err)
 		}
 	}
 
-	// delete the task if first prove error
-	if this.FirstProve {
+	// delete the task when the error is check pdp error
+	// in case there is a rpc error or pdp record not found, the pdp submission may be successful
+	// need to check when next prove is scheduled
+	if strings.Contains(err.Error(), "CheckProve error") {
 		return max.deleteAndNotify(this.FileHash, err.Error())
 	}
 	return nil

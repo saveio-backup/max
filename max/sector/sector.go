@@ -272,6 +272,7 @@ func (this *Sector) GetCandidateFileTotalSize() uint64 {
 	return totalsize
 }
 
+// NOTE: use with caution, delete candidate file will not update file map
 func (this *Sector) DeleteCandidateFile(fileHash string) error {
 	if !this.IsCandidateFile(fileHash) {
 		log.Errorf("deleteCandidateFile, file %s is not candidate file in sector %d", fileHash, this.SectorId)
