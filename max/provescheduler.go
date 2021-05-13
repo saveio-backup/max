@@ -97,7 +97,7 @@ func (this *MaxService) IsScheduledForPdpCalculationOrSubmission(key string) boo
 
 // push to pdp queue to schedule for pdp calculation
 func (this *MaxService) scheduleForProve(pdpItem PDPItem) error {
-	log.Debugf("scheduleForProve for pdpItem %v", pdpItem)
+	//log.Debugf("scheduleForProve for pdpItem %v", pdpItem)
 	log.Debugf("scheduleForProve  with key %s, challengeHeight %d", pdpItem.getItemKey(), pdpItem.getPdpCalculationHeight())
 	item := &Item{
 		Key:      pdpItem.getItemKey(),
@@ -108,7 +108,7 @@ func (this *MaxService) scheduleForProve(pdpItem PDPItem) error {
 }
 
 func (this *MaxService) ScheduleForPdpSubmission(pdpItem PDPItem) error {
-	log.Debugf("ScheduleForPdpSubmission for pdpItem %v", pdpItem)
+	//log.Debugf("ScheduleForPdpSubmission for pdpItem %v", pdpItem)
 	log.Debugf("ScheduleForPdpSubmission with key %s, submissionHeight %d", pdpItem.getItemKey(), pdpItem.getPdpSubmissionHeight())
 	subItem := &Item{
 		Key:      pdpItem.getItemKey(),
@@ -213,7 +213,8 @@ func (this *MaxService) savePdpCalculationResult(pdpItem PDPItem, height uint32,
 		return nil
 	}
 
-	log.Debugf("save pdp calculation result for pdp item %s, height %d, proveData %v", pdpItem, height, proveData)
+	//log.Debugf("save pdp calculation result for pdp item %s, height %d, proveData %v", pdpItem, height, proveData)
+	log.Debugf("save pdp calculation result for pdp itemkey %s, height %d", pdpItem.getItemKey(), height)
 	return this.savePdpResultToDB(pdpItem, height, proveData)
 }
 
