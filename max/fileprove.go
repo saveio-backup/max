@@ -319,6 +319,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 						return fmt.Errorf("AddFileToSector for file %s error %s", fileHash, err)
 					}
 					addedToSector = true
+					sectorId = sectorRef.SectorID
 				}
 			}
 		} else {
@@ -348,6 +349,16 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				return err
 			}
 			log.Debugf("saveProveTask for file % with firstProveHeight %d", fileHash, height)
+
+			// if sector prove task not exist, create a sector prove task
+			if !this.isSectorProveTaskExist(sectorId) {
+				err := this.addSectorProveTask(sectorId)
+				if err != nil {
+					return err
+				}
+
+				log.Debugf("addProveTask for sector %d when prove record found", sectorId)
+			}
 			return nil
 		}
 

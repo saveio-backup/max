@@ -134,7 +134,14 @@ func (this *MaxService) proveSector(sectorId uint64) error {
 		return fmt.Errorf("proveSector error sector %d not exist", sectorId)
 	}
 
-	challengeHeight := uint32(sector.GetNextProveHeight())
+	// get next prove height from chain, next prove height may not be updated correctly
+	sectorInfo, err := this.getFsContract().GetSectorInfo(sectorId)
+	if err != nil {
+		log.Errorf("sector %d getSectorInfo error %s", sectorId, err)
+		return fmt.Errorf("sector %d getSectorInfo error %s", sectorId, err)
+	}
+
+	challengeHeight := uint32(sectorInfo.NextProveHeight)
 
 	height, _ := this.getCurrentBlockHeightAndHash()
 	if height < challengeHeight {
