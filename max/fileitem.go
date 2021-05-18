@@ -65,6 +65,9 @@ func (this *FilePDPItem) onFailedPdpCalculation(err error) error {
 }
 
 func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
+	var err error
+	var sectorId uint64
+
 	if this == nil {
 		log.Errorf("item for pdp submission is nil")
 		return nil, fmt.Errorf("item for pdp submission is nil")
@@ -78,15 +81,25 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 	bakParam := this.BakParam
 	height := uint64(this.NextChalHeight)
 
-	sector, err := this.assignSectorForFile()
-	if err != nil {
-		return nil, err
+	if this.ExpireState == EXPIRE_LAST_PROVE {
+		// sector id should be 0 when submit last prove for file
+		sectorId = this.max.sectorManager.GetFileSectorId(fileHash)
+		if sectorId == 0 {
+			log.Errorf("file %s not found in any sector when try to do last prove", fileHash)
+			return nil, fmt.Errorf("file %s not found in any sector when try to do last prove", fileHash)
+		}
+	} else {
+		sector, err := this.assignSectorForFile()
+		if err != nil {
+			return nil, err
+		}
+
+		sectorId = sector.GetSectorID()
+
+		log.Debugf("file %s has been assign to sector %d", fileHash, sectorId)
 	}
 
-	sectorId := sector.GetSectorID()
 	this.sectorId = sectorId
-
-	log.Debugf("file %s has been assign to sector %d", fileHash, sectorId)
 
 	var txHash []byte
 
@@ -145,19 +158,21 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 	max := this.getMaxService()
 	sectorId := this.sectorId
 
+	if this.ExpireState == EXPIRE_LAST_PROVE {
+		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
+		/*
+			err := max.sectorManager.DeleteFile(this.FileHash)
+			if err != nil {
+				log.Errorf("deleteFile for file %s error %s", this.FileHash, err)
+			}
+		*/
+		max.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
+		return nil
+	}
+
 	sector := max.sectorManager.GetSectorBySectorId(sectorId)
 	if sector == nil {
 		panic("sector not exist")
-	}
-
-	if this.ExpireState == EXPIRE_LAST_PROVE {
-		log.Infof("delete file and prove task for fileHash %s after last prove", fileHash)
-		err := max.sectorManager.DeleteCandidateFile(this.FileHash)
-		if err != nil {
-			log.Errorf("deleteCandidateFile for file %s error %s", this.FileHash, err)
-		}
-		max.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
-		return nil
 	}
 
 	if this.FirstProve {
@@ -235,7 +250,7 @@ func (this *FilePDPItem) onFailedPdpSubmission(err error) error {
 
 	max := this.getMaxService()
 
-	if this.sectorId != 0 {
+	if this.sectorId != 0 && this.ExpireState != EXPIRE_LAST_PROVE {
 		err := max.sectorManager.DeleteCandidateFile(this.FileHash)
 		if err != nil {
 			log.Errorf("deleteCandidateFile for file %s onFailedPdpSubmission error %s", this.FileHash, err)

@@ -262,10 +262,13 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return nil
 		}
 
-		if param.FirstProveHeight != 0 {
-			log.Debugf("no need prove file when first prove done")
-			return nil
-		}
+		/*
+			// should check if need to do last prove
+			if param.FirstProveHeight != 0 {
+				log.Debugf("no need prove file when first prove done")
+				return nil
+			}
+		*/
 	}
 
 	height, hash := this.getCurrentBlockHeightAndHash()
