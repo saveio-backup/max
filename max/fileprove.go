@@ -274,6 +274,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		return fmt.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
 	}
 
+	proveFound := false
 	expireState := (ExpireState)(EXPIRE_NONE)
 	if !first {
 		var times uint64
@@ -290,106 +291,108 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return err
 		}
 
-		found := false
 		for _, detail := range fileProveDetails.ProveDetails {
 			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
 				times = detail.ProveTimes
 				firstProveHeight = detail.BlockHeight
 				log.Debugf("[proveFile] find matching prove detail for fileHash : %s, times :%d", fileHash, times)
-				found = true
+				proveFound = true
 				break
 			}
 		}
 
-		if !found {
-			log.Debugf("[proveFile] cannot find matching prove detail for fileHash : %s", fileHash)
-			return fmt.Errorf("prove detail not found for fileHash %s", fileHash)
-		}
-
-		addedToSector := false
-		// process the case when prove record not found on first pdp submission
-		sectorId := this.sectorManager.GetFileSectorId(fileHash)
-		if sectorId == 0 {
-			for _, sectorRef := range fileInfo.SectorRefs {
-				if sectorRef.NodeAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
-					// find matching file info, add  to sector
-					_, err = this.sectorManager.AddFileToSector(fileInfo.ProveLevel, fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize, sectorRef.SectorID)
+		if proveFound {
+			addedToSector := false
+			// process the case when prove record not found on first pdp submission
+			sectorId := this.sectorManager.GetFileSectorId(fileHash)
+			if sectorId == 0 {
+				for _, sectorRef := range fileInfo.SectorRefs {
+					if sectorRef.NodeAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+						// find matching file info, add  to sector
+						_, err = this.sectorManager.AddFileToSector(fileInfo.ProveLevel, fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize, sectorRef.SectorID)
+						if err != nil {
+							log.Errorf("AddFileToSector for file %s error %s", fileHash, err)
+							return fmt.Errorf("AddFileToSector for file %s error %s", fileHash, err)
+						}
+						addedToSector = true
+						sectorId = sectorRef.SectorID
+					}
+				}
+			} else {
+				sector := this.sectorManager.GetSectorBySectorId(sectorId)
+				if sector == nil {
+					log.Errorf("sector %d not exist", sectorId)
+					return fmt.Errorf("sector %d not exist", sectorId)
+				}
+				if sector.IsCandidateFile(fileHash) {
+					err = this.sectorManager.MoveCandidateFileToSector(fileHash)
 					if err != nil {
-						log.Errorf("AddFileToSector for file %s error %s", fileHash, err)
-						return fmt.Errorf("AddFileToSector for file %s error %s", fileHash, err)
+						log.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
+						return fmt.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
 					}
 					addedToSector = true
-					sectorId = sectorRef.SectorID
 				}
 			}
-		} else {
-			sector := this.sectorManager.GetSectorBySectorId(sectorId)
-			if sector == nil {
-				log.Errorf("sector %d not exist", sectorId)
-				return fmt.Errorf("sector %d not exist", sectorId)
-			}
-			if sector.IsCandidateFile(fileHash) {
-				err = this.sectorManager.MoveCandidateFileToSector(fileHash)
+
+			if addedToSector {
+				log.Debugf("file %s has been added to sector %d when prove record found", fileHash, sectorId)
+
+				// saves the first prove height to check if fileinfo is deleted then added agian
+				err = this.saveProveTask(fileHash, 0, 0, 0,
+					common.ADDRESS_EMPTY, uint64(height), fileInfo.FileProveParam)
 				if err != nil {
-					log.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
-					return fmt.Errorf("MoveCandidateFileToSector for file %s error %s", fileHash, err)
-				}
-				addedToSector = true
-			}
-		}
-
-		if addedToSector {
-			log.Debugf("file %s has been added to sector %d when prove record found", fileHash, sectorId)
-
-			// saves the first prove height to check if fileinfo is deleted then added agian
-			err = this.saveProveTask(fileHash, 0, 0, 0,
-				common.ADDRESS_EMPTY, uint64(height), fileInfo.FileProveParam)
-			if err != nil {
-				log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
-				return err
-			}
-			log.Debugf("saveProveTask for file % with firstProveHeight %d", fileHash, height)
-
-			// if sector prove task not exist, create a sector prove task
-			if !this.isSectorProveTaskExist(sectorId) {
-				err := this.addSectorProveTask(sectorId)
-				if err != nil {
+					log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
 					return err
 				}
+				log.Debugf("saveProveTask for file % with firstProveHeight %d", fileHash, height)
 
-				log.Debugf("addProveTask for sector %d when prove record found", sectorId)
+				// if sector prove task not exist, create a sector prove task
+				if !this.isSectorProveTaskExist(sectorId) {
+					err := this.addSectorProveTask(sectorId)
+					if err != nil {
+						return err
+					}
+
+					log.Debugf("addProveTask for sector %d when prove record found", sectorId)
+				}
+				return nil
 			}
-			return nil
-		}
 
-		log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
-		if times == fileInfo.ProveTimes+1 {
-			log.Debugf("[proveFile] finish file prove for %s", fileHash)
-			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
-			return nil
-		}
+			log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
+			if times == fileInfo.ProveTimes+1 {
+				log.Debugf("[proveFile] finish file prove for %s", fileHash)
+				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
+				return nil
+			}
 
-		expireState = checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval, fileInfo.ExpiredHeight)
-		switch expireState {
-		case EXPIRE_NEED_PROVE:
-			log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
-			break
-		case EXPIRE_LAST_PROVE:
-			log.Debugf("[proveFile] last prove after reaching expired height for fileHash :%s, ", fileHash)
-			break
-		case EXPIRE_AFTER_MAX:
-			log.Warnf("[proveFile] delete file and prove task for fileHash %s after prove task expire", fileHash)
-			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
-			return nil
+			expireState = checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval, fileInfo.ExpiredHeight)
+			switch expireState {
+			case EXPIRE_NEED_PROVE:
+				log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
+				break
+			case EXPIRE_LAST_PROVE:
+				log.Debugf("[proveFile] last prove after reaching expired height for fileHash :%s, ", fileHash)
+				break
+			case EXPIRE_AFTER_MAX:
+				log.Warnf("[proveFile] delete file and prove task for fileHash %s after prove task expire", fileHash)
+				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
+				return nil
 
-		case EXPIRE_BEFORE_MIN:
-			log.Debugf("[proveFile] file prove too early for file %s", fileHash)
-			return nil
-		default:
-			log.Errorf("[proveFile] invalid expire state")
-			return fmt.Errorf("invalid expire state")
+			case EXPIRE_BEFORE_MIN:
+				log.Debugf("[proveFile] file prove too early for file %s", fileHash)
+				return nil
+			default:
+				log.Errorf("[proveFile] invalid expire state")
+				return fmt.Errorf("invalid expire state")
+			}
 		}
 	}
+
+	if !first && !proveFound {
+		log.Debugf("[proveFile] retry prove file when not first time and prove detail not found for fileHash : %s", fileHash)
+		first = true
+	}
+
 	bakParam := BakParam{
 		LuckyNum:          luckyNum,
 		BakHeight:         bakHeight,
