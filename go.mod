@@ -2,12 +2,6 @@ module github.com/saveio/max
 
 go 1.14
 
-replace (
-	github.com/saveio/carrier => ../carrier
-	github.com/saveio/themis => ../themis
-	github.com/saveio/themis-go-sdk => ../themis-go-sdk
-)
-
 require (
 	github.com/ethereum/go-ethereum v1.10.2
 	github.com/fatih/color v1.10.0
@@ -18,8 +12,8 @@ require (
 	github.com/onsi/ginkgo v1.16.1
 	github.com/onsi/gomega v1.11.0
 	github.com/rs/cors v1.7.0
-	github.com/saveio/themis v0.0.0-00010101000000-000000000000
-	github.com/saveio/themis-go-sdk v0.0.0-00010101000000-000000000000
+	github.com/saveio/themis v1.0.114
+	github.com/saveio/themis-go-sdk v0.0.0-20210519061709-1fe5f669c2a6
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210305035536-64b5b1c73954
 	golang.org/x/crypto v0.0.0-20210415154028-4f45737414dc
