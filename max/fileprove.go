@@ -281,6 +281,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 	expireState := (ExpireState)(EXPIRE_NONE)
 	if !first {
 		var times uint64
+		var finished bool
 		var firstProveHeight uint64
 
 		log.Debugf("[proveFile] not first prove for fileHash %s", fileHash)
@@ -297,11 +298,18 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		for _, detail := range fileProveDetails.ProveDetails {
 			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
 				times = detail.ProveTimes
+				finished = detail.Finished
 				firstProveHeight = detail.BlockHeight
 				log.Debugf("[proveFile] find matching prove detail for fileHash : %s, times :%d", fileHash, times)
 				proveFound = true
 				break
 			}
+		}
+
+		if finished {
+			log.Debugf("[proveFile] finish file prove for %s", fileHash)
+			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
+			return nil
 		}
 
 		if proveFound {
@@ -362,17 +370,9 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			}
 
 			log.Debugf("[proveFile]  fileHash : %s, times :%d, challengeTimes : %d", fileHash, times, fileInfo.ProveTimes)
-			if times == fileInfo.ProveTimes+1 {
-				log.Debugf("[proveFile] finish file prove for %s", fileHash)
-				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
-				return nil
-			}
 
 			expireState = checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval, fileInfo.ExpiredHeight)
 			switch expireState {
-			case EXPIRE_NEED_PROVE:
-				log.Debugf("[proveFile] time to prove for fileHash :%s", fileHash)
-				break
 			case EXPIRE_LAST_PROVE:
 				log.Debugf("[proveFile] last prove after reaching expired height for fileHash :%s, ", fileHash)
 				break
@@ -380,8 +380,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				log.Warnf("[proveFile] delete file and prove task for fileHash %s after prove task expire", fileHash)
 				this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_EXPIRE)
 				return nil
-
-			case EXPIRE_BEFORE_MIN:
+			case EXPIRE_NO_NEED:
 				log.Debugf("[proveFile] file prove too early for file %s", fileHash)
 				return nil
 			default:
@@ -432,29 +431,26 @@ type ExpireState int
 
 const (
 	EXPIRE_NONE       = iota
-	EXPIRE_BEFORE_MIN // before min time to submit the prove
+	EXPIRE_NO_NEED    // no need to prove
 	EXPIRE_AFTER_MAX  // after max time to submit the prove
-	EXPIRE_NEED_PROVE // need to submit the prove
 	EXPIRE_LAST_PROVE // last prove after reach expied height
 )
 
 func checkProveExpire(currBlockHeight uint64, firstProveHeight uint64, provedTimes uint64, challengeRate uint64, expiredHeight uint64) ExpireState {
-	expireMinHeight := firstProveHeight + provedTimes*challengeRate
-	expireMaxHeight := firstProveHeight + (provedTimes+1)*challengeRate
-
 	log.Debugf("[checkProveExpire] currBlockHeight :%d, firstProveHeight :%d, provedTimes :%d, challengeRate :%d, expiredHeight : %d",
 		currBlockHeight, firstProveHeight, provedTimes, challengeRate, expiredHeight)
-	if currBlockHeight > expireMaxHeight {
-		return EXPIRE_AFTER_MAX
-	} else if currBlockHeight < expireMinHeight {
-		// dont wait for next interval if expiredHeight has reached
-		if currBlockHeight > expiredHeight {
+
+	if currBlockHeight > expiredHeight {
+		// if after 2 challegneRate last prove is still not finished, no more retry
+		if currBlockHeight > expiredHeight+2*challengeRate {
+			return EXPIRE_AFTER_MAX
+		} else {
+
 			return EXPIRE_LAST_PROVE
 		}
-		return EXPIRE_BEFORE_MIN
-	} else {
-		return EXPIRE_NEED_PROVE
 	}
+	return EXPIRE_NO_NEED
+
 }
 func getTxHashString(txHash []byte) string {
 	hash, err := common.Uint256ParseFromBytes(txHash)
