@@ -70,14 +70,14 @@ const (
 )
 
 const (
-	MAX_RETRY_REQUEST_TIMES                   = 3  // max request retry times
-	MAX_REQUEST_TIMEWAIT                      = 5  // request time wait in second
-	POLL_TX_CONFIRMED_TIMEOUT                 = 15 // timeout to poll for tx confirmed
-	PROVE_FILE_INTERVAL                       = 60 // 60s proves
-	PROVE_SECTOR_INTERVAL                     = 60 // 10s proves
-	MAX_PROVE_FILE_ROUTINES                   = 10 // maximum of concurrent check prove files
-	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE        = 10 // default remove notify channel size
-	PDP_QUEUE_SIZE                            = 50 // pdp queue size for pdp calculation and submission
+	MAX_RETRY_REQUEST_TIMES                   = 3       // max request retry times
+	MAX_REQUEST_TIMEWAIT                      = 5       // request time wait in second
+	POLL_TX_CONFIRMED_TIMEOUT                 = 15      // timeout to poll for tx confirmed
+	PROVE_FILE_INTERVAL                       = 30 * 60 // 30 mins
+	PROVE_SECTOR_INTERVAL                     = 30 * 60 // 30 mins
+	MAX_PROVE_FILE_ROUTINES                   = 10      // maximum of concurrent check prove files
+	DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE        = 10      // default remove notify channel size
+	PDP_QUEUE_SIZE                            = 50      // pdp queue size for pdp calculation and submission
 	PROVE_TASK_REMOVAL_REASON_NORMAL          = "success"
 	PROVE_TASK_REMOVAL_REASON_EXPIRE          = "expire"
 	PROVE_TASK_REMOVAL_REASON_DELETE          = "file deleted"
