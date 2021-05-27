@@ -92,13 +92,16 @@ func (this *Cache) getCurrentHeightAndHash() (uint32, common.Uint256) {
 }
 
 func (this *MaxService) getFileProveDetails(fileHash string) (*fs.FsProveDetails, error) {
-	proveDetails, err := this.rpcCache.getProveDetails(fileHash)
-	if err == nil {
-		return proveDetails, nil
-	}
+	// may get wrong prove detail when it is updated
+	/*
+		proveDetails, err := this.rpcCache.getProveDetails(fileHash)
+		if err == nil {
+			return proveDetails, nil
+		}
+	*/
 
 	fsContract := this.chain.Native.Fs
-	proveDetails, err = fsContract.GetFileProveDetails(fileHash)
+	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
 	if err != nil {
 		return nil, err
 	}

@@ -253,6 +253,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		return err
 	}
 
+	proveFound := false
 	param, err := this.getProveTask(fileHash)
 	if err == nil && param != nil {
 		if param.FirstProveHeight != 0 && fileInfo.BlockHeight > param.FirstProveHeight {
@@ -262,13 +263,11 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 			return nil
 		}
 
-		/*
-			// should check if need to do last prove
-			if param.FirstProveHeight != 0 {
-				log.Debugf("no need prove file when first prove done")
-				return nil
-			}
-		*/
+		// should check if need to do last prove
+		if param.FirstProveHeight != 0 {
+			log.Debugf("first prove height for file %s is %d", fileHash, param.FirstProveHeight)
+			proveFound = true
+		}
 	}
 
 	height, hash := this.getCurrentBlockHeightAndHash()
@@ -277,7 +276,6 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		return fmt.Errorf("getCurrentBlockHeightAndHash error, block height is 0")
 	}
 
-	proveFound := false
 	expireState := (ExpireState)(EXPIRE_NONE)
 	if !first {
 		var times uint64
@@ -285,6 +283,15 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		var firstProveHeight uint64
 
 		log.Debugf("[proveFile] not first prove for fileHash %s", fileHash)
+
+		if proveFound {
+			//no need to query for prove details when no need to prove
+			if checkProveExpire(uint64(height), firstProveHeight, times, fileInfo.ProveInterval, fileInfo.ExpiredHeight) == EXPIRE_NO_NEED {
+				log.Debugf("file %s has been proved, and not time for last prove")
+				return nil
+			}
+		}
+
 		fileProveDetails, err := this.getFileProveDetails(fileHash)
 		if err != nil {
 			log.Errorf("[proveFile] GetFileProveDetails for fileHash %s error : %s", fileHash, err)
@@ -305,7 +312,6 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				break
 			}
 		}
-
 		if finished {
 			log.Debugf("[proveFile] finish file prove for %s", fileHash)
 			this.deleteAndNotify(fileHash, PROVE_TASK_REMOVAL_REASON_NORMAL)
