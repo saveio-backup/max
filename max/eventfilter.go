@@ -129,6 +129,10 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 		return
 	}
 
+	parsedEvent["eventName"] = eventName
+
+	this.notifyChainEvent(parsedEvent)
+
 	switch eventName {
 	case "deleteFile":
 		this.processDeleteFileEvent(parsedEvent)
@@ -142,6 +146,26 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 		return
 	}
 	return
+}
+
+func (this *MaxService) RegChainEventNotificationChannel(moduleId string, ch chan map[string]interface{}) {
+	this.chainEventNotifyChannels.Store(moduleId, ch)
+	log.Debugf("register chain event notification for module %s", moduleId)
+}
+
+func (this *MaxService) notifyChainEvent(event map[string]interface{}) {
+	this.chainEventNotifyChannels.Range(func(key, value interface{}) bool {
+		log.Debugf("notify chain event for module %s, event %v", event["eventName"], event)
+		go func() {
+			ch, ok := value.(chan map[string]interface{})
+			if !ok {
+				log.Errorf("event channel type error")
+				return
+			}
+			ch <- event
+		}()
+		return true
+	})
 }
 
 func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {

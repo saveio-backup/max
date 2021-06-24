@@ -99,26 +99,27 @@ type ProveTaskRemovalNotify struct {
 }
 
 type MaxService struct {
-	blockstore       bstore.Blockstore // blockstore could be either real blockstore or filestore
-	datastore        repo.Datastore
-	filestore        *fstore.Filestore
-	filemanager      *fstore.FileManager
-	dag              ipld.DAGService
-	fsstore          *fsstore.FsStore
-	pinner           pin.Pinner
-	provetasks       *sync.Map
-	sectorProveTasks *sync.Map
-	sectorManager    *sector.SectorManager
-	repo             repo.Repo
-	chain            *sdk.Chain
-	config           *FSConfig
-	rpcCache         *Cache
-	pdpQueue         *PriorityQueue
-	submitQueue      *PriorityQueue
-	submitting       *sync.Map
-	loadingtasks     bool
-	kill             chan struct{}
-	Notify           chan *ProveTaskRemovalNotify
+	blockstore               bstore.Blockstore // blockstore could be either real blockstore or filestore
+	datastore                repo.Datastore
+	filestore                *fstore.Filestore
+	filemanager              *fstore.FileManager
+	dag                      ipld.DAGService
+	fsstore                  *fsstore.FsStore
+	pinner                   pin.Pinner
+	provetasks               *sync.Map
+	sectorProveTasks         *sync.Map
+	sectorManager            *sector.SectorManager
+	repo                     repo.Repo
+	chain                    *sdk.Chain
+	config                   *FSConfig
+	rpcCache                 *Cache
+	pdpQueue                 *PriorityQueue
+	submitQueue              *PriorityQueue
+	submitting               *sync.Map
+	loadingtasks             bool
+	kill                     chan struct{}
+	Notify                   chan *ProveTaskRemovalNotify
+	chainEventNotifyChannels *sync.Map
 }
 
 type FSConfig struct {
@@ -285,12 +286,13 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 			ChunkSize: config.ChunkSize,
 			GcPeriod:  config.GcPeriod,
 		},
-		rpcCache:    NewCache(),
-		pdpQueue:    NewPriorityQueue(PDP_QUEUE_SIZE),
-		submitQueue: NewPriorityQueue(PDP_QUEUE_SIZE),
-		submitting:  new(sync.Map),
-		kill:        make(chan struct{}),
-		Notify:      make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
+		rpcCache:                 NewCache(),
+		pdpQueue:                 NewPriorityQueue(PDP_QUEUE_SIZE),
+		submitQueue:              NewPriorityQueue(PDP_QUEUE_SIZE),
+		submitting:               new(sync.Map),
+		kill:                     make(chan struct{}),
+		Notify:                   make(chan *ProveTaskRemovalNotify, DEFAULT_REMOVE_NOTIFY_CHANNEL_SIZE),
+		chainEventNotifyChannels: new(sync.Map),
 	}
 
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
