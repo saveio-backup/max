@@ -63,7 +63,7 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 						continue
 					}
 					for _, event := range events {
-						this.processEvent(event)
+						this.processEvent(i, event)
 					}
 				}
 
@@ -114,7 +114,7 @@ func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress st
 	return eventRe, nil
 }
 
-func (this *MaxService) processEvent(event map[string]interface{}) {
+func (this *MaxService) processEvent(height uint32, event map[string]interface{}) {
 	var eventName string
 	if _, ok := event["eventName"].(string); ok == false {
 		log.Debugf("eventName not found")
@@ -130,6 +130,7 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 	}
 
 	parsedEvent["eventName"] = eventName
+	parsedEvent["blockHeight"] = height
 
 	this.notifyChainEvent(parsedEvent)
 
