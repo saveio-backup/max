@@ -148,9 +148,11 @@ func (this *MaxService) processEvent(event map[string]interface{}) {
 	return
 }
 
-func (this *MaxService) RegChainEventNotificationChannel(moduleId string, ch chan map[string]interface{}) {
+func (this *MaxService) RegChainEventNotificationChannel(moduleId string) chan map[string]interface{} {
+	ch := make(chan map[string]interface{}, 10)
 	this.chainEventNotifyChannels.Store(moduleId, ch)
 	log.Debugf("register chain event notification for module %s", moduleId)
+	return ch
 }
 
 func (this *MaxService) notifyChainEvent(event map[string]interface{}) {
