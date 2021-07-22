@@ -2176,7 +2176,16 @@ func TestSaveFilePrefixForFileStore(t *testing.T) {
 }
 
 func compareProveParam(param1 *fsstore.ProveParam, param2 *fsstore.ProveParam) bool {
-	return *param1 == *param2
+	if param1.FileHash != param2.FileHash ||
+		param1.LuckyNum != param2.LuckyNum ||
+		param1.BakHeight != param2.BakHeight ||
+		param1.BakNum != param2.BakNum ||
+		param1.FirstProveHeight != param2.FirstProveHeight ||
+		param1.BrokenWalletAddr != param2.BrokenWalletAddr ||
+		!bytes.Equal(param1.PDPParam, param2.PDPParam) {
+		return false
+	}
+	return true
 }
 func TestSaveGetProveTasks(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
@@ -2196,17 +2205,27 @@ func TestSaveGetProveTasks(t *testing.T) {
 		luckyNum := rand.Uint64()
 		bakHeight := rand.Uint64()
 		bakNum := rand.Uint64()
+		pdpParam := make([]byte, 100)
+		rand.Read(pdpParam)
 		var brokenWalletAddr [20]byte
 
 		rand.Read(brokenWalletAddr[:])
 
 		height := rand.Uint64()
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height)
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height, pdpParam)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, height, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{
+			FileHash:         fileHash,
+			LuckyNum:         luckyNum,
+			BakHeight:        bakHeight,
+			BakNum:           bakNum,
+			FirstProveHeight: height,
+			BrokenWalletAddr: brokenWalletAddr,
+			PDPParam:         pdpParam,
+		}
 	}
 
 	tasks, err := max.getProveTasks()
@@ -2258,19 +2277,29 @@ func TestDeleteProveTask(t *testing.T) {
 		luckyNum := rand.Uint64()
 		bakHeight := rand.Uint64()
 		bakNum := rand.Uint64()
+		pdpParam := make([]byte, 100)
+		rand.Read(pdpParam)
 		var brokenWalletAddr [20]byte
 
 		rand.Read(brokenWalletAddr[:])
 		height := rand.Uint64()
 
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height)
+		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height, pdpParam)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		max.provetasks.Store(fileHash, struct{}{})
 
-		data[fileHash] = &fsstore.ProveParam{fileHash, luckyNum, bakHeight, bakNum, height, brokenWalletAddr}
+		data[fileHash] = &fsstore.ProveParam{
+			FileHash:         fileHash,
+			LuckyNum:         luckyNum,
+			BakHeight:        bakHeight,
+			BakNum:           bakNum,
+			FirstProveHeight: height,
+			BrokenWalletAddr: brokenWalletAddr,
+			PDPParam:         pdpParam,
+		}
 	}
 
 	tasks, err := max.getProveTasks()
@@ -2283,7 +2312,7 @@ func TestDeleteProveTask(t *testing.T) {
 			t.Fatal("error get saved file prove parameter")
 		}
 
-		err = max.deleteProveTask(param.FileHash)
+		err = max.deleteProveTask(param.FileHash, true)
 		if err != nil {
 			t.Fatal(err)
 		}
