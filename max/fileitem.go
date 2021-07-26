@@ -207,8 +207,9 @@ func (this *FilePDPItem) assignSectorForFile() (*sector.Sector, error) {
 	fileHash := string(this.FileInfo.FileHash)
 	blockCount := this.FileInfo.FileBlockNum
 	blockSize := this.FileInfo.FileBlockSize
+	isPlots := this.FileInfo.IsPlotFile
 
-	sector, err := max.sectorManager.AddCandidateFile(proveLevel, fileHash, blockCount, blockSize)
+	sector, err := max.sectorManager.AddCandidateFile(proveLevel, fileHash, blockCount, blockSize, isPlots)
 	if err != nil {
 		log.Errorf("assignSectorForFile for file %s error %s", fileHash, err)
 		return nil, err
@@ -220,7 +221,6 @@ func (this *FilePDPItem) processForSectorProve() error {
 	max := this.getMaxService()
 
 	sectorId := this.sectorId
-	//fileHash := this.FileHash
 
 	sector := max.sectorManager.GetSectorBySectorId(sectorId)
 	if sector == nil {

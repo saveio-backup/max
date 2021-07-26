@@ -26,6 +26,7 @@ type DBSectorInfo struct {
 	SectorId   uint64 `json:"sectorid"`
 	ProveLevel uint64 `json:"provelevel"`
 	Size       uint64 `json:"size"`
+	IsPlots    bool   `json:"isplots"`
 }
 
 type DBSectorList struct {
@@ -49,6 +50,7 @@ func (this *SectorManager) saveSectorList() error {
 				SectorId:   sector.GetSectorID(),
 				ProveLevel: level,
 				Size:       sector.SectorSize,
+				IsPlots:    sector.IsPlots,
 			})
 		}
 	}
@@ -182,7 +184,7 @@ func (this *SectorManager) loadSectorProveParam(sectorId uint64) (*SectorProvePa
 		}
 		return nil, err
 	}
-	
+
 	if data == nil {
 		return nil, nil
 	}
@@ -277,7 +279,8 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 	// load all the sectors and create sector
 	for _, sectorInfo := range sectorList.SectorInfos {
 		sectorId := sectorInfo.SectorId
-		sector, err := this.CreateSector(sectorId, sectorInfo.ProveLevel, sectorInfo.Size)
+		isPlots := sectorInfo.IsPlots
+		sector, err := this.CreateSector(sectorId, sectorInfo.ProveLevel, sectorInfo.Size, isPlots)
 		if err != nil {
 			log.Debugf("LoadSectorsOnStartup, createSector err %s", err)
 			return err
@@ -315,7 +318,8 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 
 		// load file list in the sector and add file to sector
 		for _, fileInfo := range fileList.SectorFileInfos {
-			_, err = this.AddFile(sectorInfo.ProveLevel, fileInfo.FileHash, fileInfo.BlockCount, fileInfo.BlockSize)
+			_, err = this.AddFileToSector(sectorInfo.ProveLevel, fileInfo.FileHash, fileInfo.BlockCount,
+				fileInfo.BlockSize, sectorId)
 			if err != nil {
 				return err
 			}
@@ -331,7 +335,8 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 		}
 
 		for _, fileInfo := range candidateFileList.SectorFileInfos {
-			_, err = this.AddCandidateFile(sectorInfo.ProveLevel, fileInfo.FileHash, fileInfo.BlockCount, fileInfo.BlockSize)
+			_, err = this.AddCandidateFileToSector(sectorInfo.ProveLevel, fileInfo.FileHash, fileInfo.BlockCount,
+				fileInfo.BlockSize, sectorId)
 			if err != nil {
 				return err
 			}

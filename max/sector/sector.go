@@ -37,15 +37,17 @@ type Sector struct {
 	TotalFileSize       uint64 // sum of file size for files in the sector
 	TotalBlockCount     uint64 // all blocks in the sector
 	ProveParam          SectorProveParam
+	IsPlots             bool
 }
 
-func InitSector(manager *SectorManager, id uint64, size uint64) *Sector {
+func InitSector(manager *SectorManager, id uint64, size uint64, isPlots bool) *Sector {
 	return &Sector{
 		manager:           manager,
 		SectorId:          id,
 		SectorSize:        size,
 		FileList:          new(sync.Map),
 		CandidateFileList: new(sync.Map),
+		IsPlots:           isPlots,
 	}
 }
 
@@ -64,6 +66,10 @@ func (this *Sector) GetTotalFileSize() uint64 {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
 	return this.TotalFileSize
+}
+
+func (this *Sector) IsPlotSector() bool {
+	return this.IsPlots
 }
 
 func (this *Sector) GetProveLevel() uint64 {
@@ -152,13 +158,17 @@ func (this *Sector) GetProveInterval() uint64 {
 	return this.GetProveParam().Interval
 }
 
-func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSize uint64) error {
+func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSize uint64, isPlots bool) error {
 	if this.IsFileInSector(fileHash) {
 		return fmt.Errorf("addFileToSector, file %s already in sector", fileHash)
 	}
 
 	if this.IsCandidateFile(fileHash) {
 		return fmt.Errorf("addFileToSector, file %s is candiate file", fileHash)
+	}
+
+	if isPlots != this.IsPlotSector() {
+		return fmt.Errorf("addFileToSector, file %s plot type not match", fileHash)
 	}
 
 	fileSize := blockCount * blockSize
@@ -217,7 +227,7 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 	return nil
 }
 
-func (this *Sector) AddCandidateFile(fileHash string, blockCount uint64, blockSize uint64) error {
+func (this *Sector) AddCandidateFile(fileHash string, blockCount uint64, blockSize uint64, isPlots bool) error {
 	if this.IsFileInSector(fileHash) {
 		log.Errorf("addCandidateFile, file %s is already in sector %d", fileHash, this.SectorId)
 		return fmt.Errorf("addCandidateFile, file %s is already in sector %d", fileHash, this.SectorId)
@@ -226,6 +236,10 @@ func (this *Sector) AddCandidateFile(fileHash string, blockCount uint64, blockSi
 	if this.IsCandidateFile(fileHash) {
 		log.Errorf("addCandidateFile, file %s is already candidate file in sector %d", fileHash, this.SectorId)
 		return fmt.Errorf("addCandidateFile, file %s is already candidate file in sector %d", fileHash, this.SectorId)
+	}
+
+	if isPlots != this.IsPlotSector() {
+		return fmt.Errorf("addCandidateFile, file %s plot type not match with sector %d", fileHash, this.SectorId)
 	}
 
 	// block if sector prvoe is ongoing, since prove task needs to block until it has result for file pdp submission

@@ -34,7 +34,7 @@ func TestSectorPersist(t *testing.T) {
 	}
 
 	for index, info := range sectorList {
-		sector, err := manager.CreateSector(info.SectorId, info.ProveLevel, info.Size)
+		sector, err := manager.CreateSector(info.SectorId, info.ProveLevel, info.Size, isPlots)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,13 +60,13 @@ func TestSectorPersist(t *testing.T) {
 		}
 
 		for _, file := range fileList {
-			_, err := manager.AddFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			_, err := manager.AddFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 			if err != nil {
 				t.Fatal(err)
 			}
 
 			// can not add a file that is already in sector as a candidate file
-			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 			if err == nil {
 				t.Fatalf("cannot add a file that is already in sector as a candidate")
 			}
@@ -87,7 +87,7 @@ func TestSectorPersist(t *testing.T) {
 
 		// try add as file as candidate when sector is full
 		for _, file := range CandidateFileList {
-			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 			if err == nil {
 				t.Fatalf("cannot add a file as candidate, sector already full")
 			}
@@ -101,7 +101,7 @@ func TestSectorPersist(t *testing.T) {
 
 		// add file as candidate should be fine now
 		for _, file := range CandidateFileList {
-			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+			_, err = manager.AddCandidateFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -148,7 +148,7 @@ func TestSectorDelete(t *testing.T) {
 		Size:       MIN_SECTOR_SIZE,
 	}
 
-	sector, err := manager.CreateSector(info.SectorId, info.ProveLevel, info.Size)
+	sector, err := manager.CreateSector(info.SectorId, info.ProveLevel, info.Size, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestSectorDelete(t *testing.T) {
 	}
 
 	for _, file := range fileList {
-		_, err := manager.AddFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize)
+		_, err := manager.AddFile(info.ProveLevel, file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 		if err != nil {
 			t.Fatal(err)
 		}

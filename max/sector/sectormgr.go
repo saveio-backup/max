@@ -33,6 +33,7 @@ type SectorEvent struct {
 	SectorID   uint64
 	ProveLevel uint64
 	Size       uint64
+	IsPlots    bool
 }
 
 // need to add more generic interface for saving/retriving data from db like getData
@@ -66,7 +67,7 @@ func (this *SectorManager) StartSectorManagerService() {
 			switch event.Event {
 			case SECTOR_EVENT_CREATE:
 				go func() {
-					_, err := this.CreateSector(event.SectorID, event.ProveLevel, event.Size)
+					_, err := this.CreateSector(event.SectorID, event.ProveLevel, event.Size, event.IsPlots)
 					if err != nil {
 						log.Warnf("[SectorManagerService] create sector %d error : %s", event.SectorID, err)
 						return
@@ -94,7 +95,7 @@ func (this *SectorManager) NotifySectorEvent(event *SectorEvent) {
 }
 
 // create a new sector with given sector size, sector id is allocated automatically
-func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size uint64) (*Sector, error) {
+func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size uint64, isPlots bool) (*Sector, error) {
 	sector := this.GetSectorBySectorId(sectorId)
 	if sector != nil {
 		return nil, fmt.Errorf("create sector error, sector with id %d already exist", sectorId)
@@ -120,7 +121,7 @@ func (this *SectorManager) CreateSector(sectorId uint64, proveLevel uint64, size
 		this.sectors[proveLevel] = sectors
 	}
 
-	sector = InitSector(this, sectorId, size)
+	sector = InitSector(this, sectorId, size, isPlots)
 	sectors[sector.GetSectorID()] = sector
 
 	this.sectorIdMap.Store(sectorId, sector)
@@ -195,7 +196,8 @@ func (this *SectorManager) GetSectorBySectorId(sectorId uint64) *Sector {
 }
 
 // try add a file with a fileInfo to blocks which has enough size for file
-func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64) (*Sector, error) {
+func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCount uint64,
+	blockSize uint64, isPlots bool) (*Sector, error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
@@ -203,13 +205,13 @@ func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCoun
 		return nil, fmt.Errorf("addFile error, file %s is already added", fileHash)
 	}
 
-	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize)
+	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize, isPlots)
 	if err != nil {
 		return nil, fmt.Errorf("addFile error, find matching sector error %s", err)
 	}
 
 	sector := this.GetSectorBySectorId(sectorId)
-	err = sector.AddFileToSector(fileHash, blockCount, blockSize)
+	err = sector.AddFileToSector(fileHash, blockCount, blockSize, isPlots)
 	if err != nil {
 		return nil, fmt.Errorf("addFile error, addFileToSector error %v", err)
 	}
@@ -220,7 +222,8 @@ func (this *SectorManager) AddFile(proveLevel uint64, fileHash string, blockCoun
 
 }
 
-func (this *SectorManager) AddFileToSector(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64, sectorId uint64) (*Sector, error) {
+func (this *SectorManager) AddFileToSector(proveLevel uint64, fileHash string, blockCount uint64,
+	blockSize uint64, sectorId uint64) (*Sector, error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
@@ -237,7 +240,7 @@ func (this *SectorManager) AddFileToSector(proveLevel uint64, fileHash string, b
 		return nil, fmt.Errorf("addFileToSector error, sector %d level not match", sectorId)
 	}
 
-	err := sector.AddFileToSector(fileHash, blockCount, blockSize)
+	err := sector.AddFileToSector(fileHash, blockCount, blockSize, sector.IsPlotSector())
 	if err != nil {
 		return nil, fmt.Errorf("addFileToSector error %v", err)
 	}
@@ -245,7 +248,6 @@ func (this *SectorManager) AddFileToSector(proveLevel uint64, fileHash string, b
 	this.UpdateFileMap(fileHash, sectorId, true)
 	log.Debugf("Sector AddFileToSector: file %s is added to sector %d", fileHash, sectorId)
 	return sector, nil
-
 }
 
 func (this *SectorManager) DeleteFile(fileHash string) error {
@@ -274,7 +276,8 @@ func (this *SectorManager) DeleteFile(fileHash string) error {
 }
 
 // add a candidate file to sector, candidate file may be deleted or added to sector depending on pdp result
-func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, blockCount uint64, blockSize uint64) (*Sector, error) {
+func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, blockCount uint64,
+	blockSize uint64, isPlots bool) (*Sector, error) {
 	this.lock.Lock()
 
 	if this.IsFileAdded(fileHash) {
@@ -282,7 +285,7 @@ func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, 
 		return nil, fmt.Errorf("addCandidateFile error, file %s is already added", fileHash)
 	}
 
-	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize)
+	sectorId, err := this.findMatchingSectorIdNoLock(proveLevel, blockCount*blockSize, isPlots)
 	if err != nil {
 		this.lock.Unlock()
 		return nil, fmt.Errorf("addCandidateFile error, find matching sector error %s", err)
@@ -291,7 +294,7 @@ func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, 
 	sector := this.GetSectorBySectorId(sectorId)
 	this.lock.Unlock()
 
-	err = sector.AddCandidateFile(fileHash, blockCount, blockSize)
+	err = sector.AddCandidateFile(fileHash, blockCount, blockSize, isPlots)
 	if err != nil {
 		return nil, fmt.Errorf("addCandidateFile error, addFileToSector error %v", err)
 	}
@@ -300,6 +303,34 @@ func (this *SectorManager) AddCandidateFile(proveLevel uint64, fileHash string, 
 	this.UpdateFileMap(fileHash, sectorId, true)
 	this.lock.Unlock()
 	log.Debugf("Sector AddCandidateFile: file %s is added to sector %d", fileHash, sectorId)
+	return sector, nil
+}
+
+func (this *SectorManager) AddCandidateFileToSector(proveLevel uint64, fileHash string, blockCount uint64,
+	blockSize uint64, sectorId uint64) (*Sector, error) {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	if this.IsFileAdded(fileHash) {
+		return nil, fmt.Errorf("addCandidateFileToSector error, file %s is already added", fileHash)
+	}
+
+	sector := this.GetSectorBySectorId(sectorId)
+	if sector == nil {
+		return nil, fmt.Errorf("addCandidateFileToSector error, sector %d not found", sectorId)
+	}
+
+	if sector.GetProveLevel() != proveLevel {
+		return nil, fmt.Errorf("addCandidateFileToSector error, sector %d level not match", sectorId)
+	}
+
+	err := sector.AddCandidateFile(fileHash, blockCount, blockSize, sector.IsPlotSector())
+	if err != nil {
+		return nil, fmt.Errorf("addCandidateFileToSector error %v", err)
+	}
+
+	this.UpdateFileMap(fileHash, sectorId, true)
+	log.Debugf("Sector addCandidateFileToSector: file %s is added to sector %d", fileHash, sectorId)
 	return sector, nil
 }
 
@@ -352,9 +383,12 @@ func (this *SectorManager) MoveCandidateFileToSector(fileHash string) error {
 	return nil
 }
 
-func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sector, fileSize uint64) uint64 {
+func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sector, fileSize uint64, isPlots bool) uint64 {
 	candidates := make([]uint64, 0)
 	for sectorId, sector := range sectors {
+		if sector.IsPlotSector() != isPlots {
+			continue
+		}
 		if sector.GetSectorRemainingSizeNoLock() >= fileSize {
 			candidates = append(candidates, sectorId)
 		}
@@ -371,16 +405,16 @@ func (this *SectorManager) FindMatchingSectorIdWithSize(sectors map[uint64]*Sect
 	return candidates[0]
 }
 
-func (this *SectorManager) FindMatchingSectorId(proveLevel uint64, fileSize uint64) (uint64, error) {
+func (this *SectorManager) FindMatchingSectorId(proveLevel uint64, fileSize uint64, isPlots bool) (uint64, error) {
 	// when many files are uploaded concurrently, this lock may block for a long time which may lead to reply
 	// ack timeout for upload request. It may be caused by sector lock,
 	//this.lock.RLock()
 	//defer this.lock.RUnlock()
 
-	return this.findMatchingSectorIdNoLock(proveLevel, fileSize)
+	return this.findMatchingSectorIdNoLock(proveLevel, fileSize, isPlots)
 }
 
-func (this *SectorManager) findMatchingSectorIdNoLock(proveLevel uint64, fileSize uint64) (uint64, error) {
+func (this *SectorManager) findMatchingSectorIdNoLock(proveLevel uint64, fileSize uint64, isPlots bool) (uint64, error) {
 	sectors, exist := this.sectors[proveLevel]
 	if !exist {
 		return 0, fmt.Errorf("no sector with prove level %d found", proveLevel)
@@ -389,7 +423,7 @@ func (this *SectorManager) findMatchingSectorIdNoLock(proveLevel uint64, fileSiz
 	//to find the sector which is most suitable for the file storage
 	// eg, if one sector has remaining size 2G, and we want to store a file with 1G, it should be
 	// stored in this sector instead of putting it in a empty sector
-	sectorId := this.FindMatchingSectorIdWithSize(sectors, fileSize)
+	sectorId := this.FindMatchingSectorIdWithSize(sectors, fileSize, isPlots)
 	if sectorId == 0 {
 		return 0, fmt.Errorf("no matching sector found for with size %d", fileSize)
 	}

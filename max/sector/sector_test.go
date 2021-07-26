@@ -17,8 +17,10 @@ type File struct {
 	BlockSize  uint64
 }
 
+var isPlots = false
+
 func TestSector(t *testing.T) {
-	sector := InitSector(nil, 1, SECTOR_SIZE)
+	sector := InitSector(nil, 1, SECTOR_SIZE, isPlots)
 
 	files := []File{
 		File{"file1", 100, BLOCK_SIZE},
@@ -28,7 +30,7 @@ func TestSector(t *testing.T) {
 	}
 
 	for _, file := range files {
-		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize)
+		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +47,7 @@ func TestSector(t *testing.T) {
 		BlockSize:  BLOCK_SIZE,
 	}
 
-	err := sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize)
+	err := sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,33 +62,32 @@ func TestSector(t *testing.T) {
 	}
 
 	bigFile.BlockCount++
-	err = sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize)
+	err = sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize, isPlots)
 	if err == nil {
 		t.Fatalf("addFileToSector should fail")
 	}
 
 	// should be ok to add file with largest size
 	bigFile.BlockCount--
-	err = sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize)
+	err = sector.AddFileToSector(bigFile.FileHash, bigFile.BlockCount, bigFile.BlockSize, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSectorManager(t *testing.T) {
-
 	db := InitTestDB()
 	manager := InitSectorManager(db)
 
 	sectorId := uint64(1)
-	_, err := manager.CreateSector(sectorId, 1, MIN_SECTOR_SIZE)
+	_, err := manager.CreateSector(sectorId, 1, MIN_SECTOR_SIZE, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	fileHash := "file1"
 
-	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE)
+	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestSectorManager(t *testing.T) {
 		t.Fatalf("file added test failed,expect false")
 	}
 
-	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE)
+	_, err = manager.AddFile(1, fileHash, 100, SECTOR_BLOCK_SIZE, isPlots)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,7 @@ func TestSectorManager(t *testing.T) {
 }
 
 func TestGetFilePosBySectorIndex(t *testing.T) {
-	sector := InitSector(nil, 1, SECTOR_SIZE)
+	sector := InitSector(nil, 1, SECTOR_SIZE, isPlots)
 
 	files := []File{
 		File{"file1", 100, BLOCK_SIZE},
@@ -135,7 +136,7 @@ func TestGetFilePosBySectorIndex(t *testing.T) {
 		File{"file4", 300, BLOCK_SIZE},
 	}
 	for _, file := range files {
-		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize)
+		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,13 +174,13 @@ func TestGetFilePosBySectorIndex(t *testing.T) {
 
 }
 func TestGetFilePosBySectorIndexBoundary(t *testing.T) {
-	sector := InitSector(nil, 1, SECTOR_SIZE)
+	sector := InitSector(nil, 1, SECTOR_SIZE, isPlots)
 
 	files := []File{
 		File{"file1", 16, BLOCK_SIZE},
 	}
 	for _, file := range files {
-		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize)
+		err := sector.AddFileToSector(file.FileHash, file.BlockCount, file.BlockSize, isPlots)
 		if err != nil {
 			t.Fatal(err)
 		}

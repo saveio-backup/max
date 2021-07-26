@@ -176,6 +176,7 @@ func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
 	sectorId := event["sectorId"].(uint64)
 	size := event["size"].(uint64)
 	proveLevel := event["proveLevel"].(uint64)
+	isPlots := event["isPlots"].(bool)
 
 	address := this.getAccoutAddress()
 	if walletAddr == address.ToBase58() {
@@ -184,6 +185,7 @@ func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
 			SectorID:   sectorId,
 			ProveLevel: proveLevel,
 			Size:       size,
+			IsPlots:    isPlots,
 		})
 	}
 }
