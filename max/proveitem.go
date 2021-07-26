@@ -1,9 +1,5 @@
 package max
 
-import (
-	"github.com/saveio/themis/common"
-)
-
 type PDPItem interface {
 	doPdpCalculation() error
 	onFailedPdpCalculation(err error) error
@@ -15,10 +11,4 @@ type PDPItem interface {
 	getPdpSubmissionHeight() uint32
 	shouldSavePdpResult() bool
 	getPdpCalculationResult() []byte
-}
-type BakParam struct {
-	LuckyNum          uint64
-	BakHeight         uint64
-	BakNum            uint64
-	BadNodeWalletAddr common.Address
 }

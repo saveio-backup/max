@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/saveio/max/max/leveldbstore"
-	"github.com/saveio/themis/common"
 )
 
 const (
@@ -74,24 +73,15 @@ func (p *FilePrefix) Deserialization(raw []byte) error {
 }
 
 type ProveParam struct {
-	FileHash         string         `json:"filehash"`
-	LuckyNum         uint64         `json:"luckynum"`
-	BakHeight        uint64         `json:"bakheight"`
-	BakNum           uint64         `json:"baknum"`
-	FirstProveHeight uint64         `json:firstproveheight`
-	BrokenWalletAddr common.Address `json:"brokenwalletaddr"`
-	PDPParam         []byte         `json:"pdpparam"`
+	FileHash         string `json:"filehash"`
+	FirstProveHeight uint64 `json:"firstproveheight"`
+	PDPParam         []byte `json:"pdpparam"`
 }
 
-func NewProveParam(fileHashStr string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address,
-	firstProveHeight uint64, pdpParam []byte) *ProveParam {
+func NewProveParam(fileHashStr string, firstProveHeight uint64, pdpParam []byte) *ProveParam {
 	return &ProveParam{
 		FileHash:         fileHashStr,
-		LuckyNum:         luckyNum,
-		BakHeight:        bakHeight,
-		BakNum:           bakNum,
 		FirstProveHeight: firstProveHeight,
-		BrokenWalletAddr: brokenWalletAddr,
 		PDPParam:         pdpParam,
 	}
 }

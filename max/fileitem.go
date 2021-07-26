@@ -20,7 +20,6 @@ type FilePDPItem struct {
 	NextChalHeight uint32
 	BlockHash      common.Uint256
 	NextSubHeight  uint32
-	BakParam       BakParam
 	ExpireState    ExpireState
 	FirstProve     bool
 	PdpResult      []byte
@@ -35,14 +34,12 @@ func (this *FilePDPItem) doPdpCalculation() error {
 
 	fileHash := this.FileHash
 	fileInfo := this.FileInfo
-	bakParm := this.BakParam
 	blockHeight := this.NextChalHeight
 	blockHash := this.BlockHash
 	fsContract := this.getFsContract()
 
-	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d, luckyNum :%d, bakNum : %d, badNodeWalletAddr : %s",
-		fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, blockHash.ToHexString(), blockHeight,
-		bakParm.LuckyNum, bakParm.BakHeight, bakParm.BakNum, bakParm.BadNodeWalletAddr.ToBase58())
+	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d",
+		fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, blockHash.ToHexString(), blockHeight)
 
 	challenges := fsContract.GenChallenge(this.getAccountAddress(), blockHash,
 		this.FileInfo.FileBlockNum, this.FileInfo.ProveBlockNum)
@@ -78,7 +75,6 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 	fsContract := this.getFsContract()
 
 	fileHash := this.FileHash
-	bakParam := this.BakParam
 	height := uint64(this.NextChalHeight)
 
 	if this.ExpireState == EXPIRE_LAST_PROVE {
@@ -101,16 +97,9 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 
 	this.sectorId = sectorId
 
-	var txHash []byte
-
-	if bakParam.BakNum == 0 {
-		txHash, err = fsContract.FileProve(fileHash, proveData, height, sectorId)
-	} else {
-		txHash, err = fsContract.FileBackProve(fileHash, proveData, height,
-			bakParam.LuckyNum, bakParam.BakHeight, bakParam.BakNum, bakParam.BadNodeWalletAddr, sectorId)
-	}
+	txHash, err := fsContract.FileProve(fileHash, proveData, height, sectorId)
 	if err != nil {
-		log.Errorf("file prove error : %s bakNum : %d", err, bakParam.BakNum)
+		log.Errorf("file prove error : %s", err)
 		return nil, err
 	}
 
@@ -183,8 +172,7 @@ func (this *FilePDPItem) onSuccessfulPdpSubmission() error {
 		}
 
 		// saves the first prove height to check if fileinfo is deleted then added agian
-		err = max.saveProveTask(fileHash, 0, 0, 0,
-			common.ADDRESS_EMPTY, uint64(height), this.FileInfo.FileProveParam)
+		err = max.saveProveTask(fileHash, uint64(height), this.FileInfo.FileProveParam)
 		if err != nil {
 			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
 			return err

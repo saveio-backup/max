@@ -16,9 +16,8 @@ import (
 )
 
 // start the PDP prove service, if it is called first time for a file, it should submit one immediately
-func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
-	log.Debugf("[StartPDPVerify] fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
-		fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+func (this *MaxService) StartPDPVerify(fileHash string) error {
+	log.Debugf("[StartPDPVerify] fileHash : %s", fileHash)
 
 	if this.IsFileStore() {
 		log.Errorf("[StartPDPVerify] cannot start pdp verify with filestore")
@@ -57,7 +56,7 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 	if err != nil {
 		// not found prove for the first time
 		log.Debugf("[StartPDPVerify] first prove for filehash: %s, GetFileProveDetails error : %s", fileHash, err)
-		err = this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+		err = this.proveFile(true, fileHash)
 		if err != nil {
 			log.Debugf("[StartPDPVerify] proveFile for filehash: %s, error : %s", fileHash, err)
 			return err
@@ -75,7 +74,7 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 		// first prove, when prove detail found but not provetask, it means the fs node has restarted
 		if !found {
 			log.Debugf("[StartPDPVerify] first prove when prove detail found for filehash: %s", fileHash)
-			err = this.proveFile(true, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr)
+			err = this.proveFile(true, fileHash)
 			if err != nil {
 				log.Debugf("[StartPDPVerify] proveFile for filehash: %s, error : %s", fileHash, err)
 				return err
@@ -85,8 +84,7 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 
 	proveParam, err := this.getProveTask(fileHash)
 	if proveParam == nil {
-		err = this.saveProveTask(fileHash, 0, 0, 0,
-			common.ADDRESS_EMPTY, 0, nil)
+		err = this.saveProveTask(fileHash, 0, nil)
 		if err != nil {
 			log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
 			return err
@@ -99,13 +97,11 @@ func (this *MaxService) StartPDPVerify(fileHash string, luckyNum, bakHeight, bak
 	return nil
 }
 
-func (this *MaxService) saveProveTask(fileHash string, luckyNum, bakHeight, bakNum uint64,
-	brokenWalletAddr common.Address, firstProveHeight uint64, pdpParam []byte) error {
-	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, luckyNum, bakHeight, bakNum,
-		brokenWalletAddr, firstProveHeight, pdpParam))
+func (this *MaxService) saveProveTask(fileHash string, firstProveHeight uint64, pdpParam []byte) error {
+	err := this.fsstore.PutProveParam(fileHash, fsstore.NewProveParam(fileHash, firstProveHeight, pdpParam))
 	if err != nil {
-		log.Errorf("[saveProveTask] PutProveParam error: %v, for fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWalletAddr : %s",
-			err, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+		log.Errorf("[saveProveTask] PutProveParam error: %v, for fileHash : %s, firstProveHeight : %d",
+			err, fileHash, fileHash, firstProveHeight)
 		return err
 	}
 	return nil
@@ -171,7 +167,7 @@ func (this *MaxService) loadPDPTasksOnStartup() error {
 	}
 
 	for _, param := range tasks {
-		err = this.StartPDPVerify(param.FileHash, param.LuckyNum, param.BakHeight, param.BakNum, param.BrokenWalletAddr)
+		err = this.StartPDPVerify(param.FileHash)
 		if err != nil {
 			log.Errorf("[loadPDPTasksOnStartup] StartPDPVerify for fileHash %s error : %s", param.FileHash, err)
 		}
@@ -207,7 +203,7 @@ func (this *MaxService) proveFileService() {
 				wg.Add(1)
 				count++
 				go func(fileHash string) {
-					this.proveFile(false, fileHash, 0, 0, 0, common.ADDRESS_EMPTY)
+					this.proveFile(false, fileHash)
 					wg.Done()
 					count--
 				}(hash)
@@ -230,9 +226,8 @@ func (this *MaxService) deleteAndNotify(fileHash string, reason string) error {
 	return nil
 }
 
-func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeight, bakNum uint64, brokenWalletAddr common.Address) error {
-	log.Debugf("[proveFile] first: %v, fileHash : %s, luckyNum : %d, bakHeight : %d, bakNum : %d, brokenWallet : %s",
-		first, fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr.ToBase58())
+func (this *MaxService) proveFile(first bool, fileHash string) error {
+	log.Debugf("[proveFile] first: %v, fileHash : %s", first, fileHash)
 
 	if this.IsScheduledForPdpCalculationOrSubmission(fileHash) {
 		return nil
@@ -355,8 +350,7 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 				log.Debugf("file %s has been added to sector %d when prove record found", fileHash, sectorId)
 
 				// saves the first prove height to check if fileinfo is deleted then added agian
-				err = this.saveProveTask(fileHash, 0, 0, 0,
-					common.ADDRESS_EMPTY, uint64(height), fileInfo.FileProveParam)
+				err = this.saveProveTask(fileHash, uint64(height), fileInfo.FileProveParam)
 				if err != nil {
 					log.Errorf("saveProveTask for fileHash %s error : %s", fileHash, err)
 					return err
@@ -401,20 +395,12 @@ func (this *MaxService) proveFile(first bool, fileHash string, luckyNum, bakHeig
 		first = true
 	}
 
-	bakParam := BakParam{
-		LuckyNum:          luckyNum,
-		BakHeight:         bakHeight,
-		BakNum:            bakNum,
-		BadNodeWalletAddr: brokenWalletAddr,
-	}
-
 	filePdpItem := &FilePDPItem{
 		FileHash:       fileHash,
 		FileInfo:       fileInfo,
 		NextChalHeight: height,
 		BlockHash:      hash,
 		NextSubHeight:  height,
-		BakParam:       bakParam,
 		ExpireState:    expireState,
 		FirstProve:     first,
 		max:            this,
