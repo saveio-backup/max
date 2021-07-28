@@ -330,6 +330,13 @@ func parseEvent(event map[string]interface{}) (map[string]interface{}, error) {
 				break
 			}
 			events[key] = uint64(proveLevel)
+		case "isPlots":
+			isPlots, ok := value.(bool)
+			if !ok {
+				stopLoop = true
+				break
+			}
+			events[key] = isPlots
 		}
 
 		if stopLoop {

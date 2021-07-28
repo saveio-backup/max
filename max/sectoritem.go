@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	cid "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 	"github.com/saveio/max/max/sector"
 	fscontract "github.com/saveio/themis-go-sdk/fs"
 	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
-	cid "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 )
 
 type SectorPDPItem struct {

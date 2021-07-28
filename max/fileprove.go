@@ -19,9 +19,9 @@ import (
 func (this *MaxService) StartPDPVerify(fileHash string) error {
 	log.Debugf("[StartPDPVerify] fileHash : %s", fileHash)
 
-	if this.IsFileStore() {
-		log.Errorf("[StartPDPVerify] cannot start pdp verify with filestore")
-		return errors.New("cannot start pdp verify with filestore")
+	if !this.SupportFileProve() {
+		log.Errorf("[StartPDPVerify] cannot start pdp verify, file prove not supported")
+		return errors.New("cannot start pdp verify, file prove not supported ")
 	}
 
 	fsContract := this.chain.Native.Fs

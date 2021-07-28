@@ -65,7 +65,7 @@ var Version string
 type FSType int
 
 const (
-	FS_FILESTORE = iota
+	FS_FILESTORE = iota + 1
 	FS_BLOCKSTORE
 )
 
@@ -101,6 +101,7 @@ type ProveTaskRemovalNotify struct {
 type MaxService struct {
 	blockstore               bstore.Blockstore // blockstore could be either real blockstore or filestore
 	datastore                repo.Datastore
+	fsType                   FSType
 	filestore                *fstore.Filestore
 	filemanager              *fstore.FileManager
 	dag                      ipld.DAGService
@@ -172,7 +173,9 @@ func setMaxStorage(repo repo.Repo, maxStorage string) error {
 }
 
 func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
-	if config.FsType != FS_BLOCKSTORE && config.FsType != FS_FILESTORE {
+	if config.FsType != FS_BLOCKSTORE &&
+		config.FsType != FS_FILESTORE &&
+		config.FsType != (FS_BLOCKSTORE|FS_FILESTORE) {
 		log.Errorf("[NewMaxService] wrong fs type : %d", config.FsType)
 		return nil, errors.New("wrong fs type")
 	}
@@ -249,7 +252,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	var filemanager *fstore.FileManager
 	var pinner pin.Pinner
 
-	if config.FsType == FS_FILESTORE {
+	if (config.FsType & FS_FILESTORE) != 0 {
 		filemanager = fstore.NewFileManager(d)
 		// hash security
 		filestore = fstore.NewFilestore(bs, filemanager)
@@ -270,6 +273,7 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 	service := &MaxService{
 		blockstore:       blockstore,
 		datastore:        d,
+		fsType:           config.FsType,
 		filestore:        filestore,
 		filemanager:      filemanager,
 		dag:              dag,
@@ -295,8 +299,16 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		chainEventNotifyChannels: new(sync.Map),
 	}
 
+	if service.SupportFileStore() {
+		err = service.loadFilePrefixesOnStartup()
+		if err != nil {
+			log.Errorf("[NewMaxService] loadFilePrefixesOnStartup error: %s", err)
+			return nil, err
+		}
+	}
+
 	// start periodic GC only for blockstore, if gcPeriod is 0, gc is called immediately when deleteFile
-	if config.FsType == FS_BLOCKSTORE {
+	if (config.FsType & FS_BLOCKSTORE) != 0 {
 		err = startPeriodicGC(context.TODO(), repo, config.GcPeriod, pinner, blockstore)
 		if err != nil {
 			log.Errorf("[NewMaxService] startPeriodicGC error", err)
@@ -326,12 +338,6 @@ func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
 		}
 
 		go service.proveFileService()
-	} else {
-		err = service.loadFilePrefixesOnStartup()
-		if err != nil {
-			log.Errorf("[NewMaxService] loadFilePrefixesOnStartup error: %s", err)
-			return nil, err
-		}
 	}
 
 	log.Debugf("[NewMaxService] new max service success")
@@ -375,7 +381,7 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 		return nil, err
 	}
 
-	if this.IsFileStore() && !encrypt {
+	if this.SupportFileStore() && !encrypt {
 		_, _, err = this.buildFileStoreForFile(absFileName, filePrefix, root, list)
 		if err != nil {
 			log.Errorf("[NodesFromFile] buildFileStoreForFile error : %s", err)
@@ -481,7 +487,7 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 			return nil, err
 		}
 
-		if this.IsFileStore() && !encrypt {
+		if this.SupportFileStore() && !encrypt {
 			out, err := subRoot.GetDagNode()
 			if err != nil {
 				log.Errorf("[NodesFromLargeFile] fail to get Dag node for subroot : %s", err)
@@ -550,7 +556,7 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 
 	log.Debugf("[NodesFromLargeFile]: return %d blockHashes", len(blockHashes))
 
-	if this.IsFileStore() && !encrypt {
+	if this.SupportFileStore() && !encrypt {
 		_, _, err = this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), root, []*helpers.UnixfsNode{})
 		if err != nil {
 			log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
@@ -818,7 +824,7 @@ func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
 }
 
 func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error {
-	if !this.IsFileStore() {
+	if !this.SupportFileStore() {
 		log.Errorf("[setFilePrefix] not a filestore")
 		return errors.New("setFilePrefix can be only called on filestore")
 	}
@@ -845,7 +851,7 @@ func (this *MaxService) SetFilePrefix(fileName string, filePrefix string) error 
 }
 
 func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error {
-	if !this.IsFileStore() {
+	if !this.SupportFileStore() {
 		log.Errorf("[saveFilePrefix] not a filestore")
 		return errors.New("saveFilePrefix can be only called on filestore")
 	}
@@ -862,7 +868,7 @@ func (this *MaxService) saveFilePrefix(fileName string, filePrefix string) error
 }
 
 func (this *MaxService) getFilePrefixes() (map[string]string, error) {
-	if !this.IsFileStore() {
+	if !this.SupportFileStore() {
 		log.Errorf("[getFilePrefixes] not a filestore")
 		return nil, errors.New("loadFilePrefixes can be only called on filestore")
 	}
@@ -907,12 +913,23 @@ func (this *MaxService) loadFilePrefixesOnStartup() error {
 	return nil
 }
 
+// only for client
 func (this *MaxService) IsFileStore() bool {
-	return this.filestore != nil
+	return this.filestore != nil && this.fsType == FS_FILESTORE
+}
+
+// both client and server can support filestore
+func (this *MaxService) SupportFileStore() bool {
+	return this.filestore != nil && (this.fsType&FS_FILESTORE) != 0
+}
+
+// fs server support file prove could support blockstore only or support both
+func (this *MaxService) SupportFileProve() bool {
+	return (this.fsType & FS_BLOCKSTORE) != 0
 }
 
 func (this *MaxService) PutBlockForFilestore(fileName string, block blocks.Block, offset uint64) error {
-	if !this.IsFileStore() {
+	if !this.SupportFileStore() {
 		log.Errorf("[PutBlockForFilestore] not a filestore")
 		return errors.New("PutBlockForFilestore can be only called on filestore")
 	}
@@ -1023,7 +1040,7 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 		return err
 	}
 
-	if !this.IsFileStore() {
+	if !this.SupportFileProve() {
 		blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
 		if err != nil {
 			log.Errorf("[DeleteFile] GetBlockAttrsWithPrefix error : %s", err)
