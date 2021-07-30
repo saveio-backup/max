@@ -11,6 +11,7 @@ import (
 	"github.com/saveio/themis/common/log"
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
 	"github.com/saveio/themis/smartcontract/service/native/savefs/pdp"
+	"strings"
 )
 
 type SectorPDPItem struct {
@@ -141,6 +142,7 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 		log.Debugf("[doPdpCalculationForSector] with filePos %+v", pos)
 	}
 
+	var scoopData []byte
 	curIndex := 0
 	for _, pos := range filePos {
 		fileHash := pos.FileHash
@@ -187,12 +189,63 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 			return nil, err
 		}
 
+		if this.Sector.IsPlots && len(scoopData) == 0 {
+			fileInfo, err := max.getFileInfo(fileHash)
+			if err != nil {
+				log.Errorf("getFileInfo for file %s error %s", fileHash, err)
+				return nil, err
+			}
+
+			if !fileInfo.IsPlotFile || fileInfo.PlotInfo == nil {
+				log.Errorf("file %s not a plot file %s", fileHash, err)
+				return nil, err
+			}
+
+			index := pos.BlockIndexes[0] % fileInfo.PlotInfo.Nonces
+			count := uint64(0)
+			for _, cid := range cids {
+				cidStr := cid.String()
+				if strings.HasPrefix(cidStr, "Qm") {
+					continue
+				}
+				count++
+				// found the block
+				if index+1 == count {
+					block, err := max.GetBlock(cid)
+					if err != nil {
+						log.Errorf("get block error %s", err)
+						return nil, err
+					}
+
+					scoopData = make([]byte, 64)
+					copy(scoopData, block.RawData())
+				}
+			}
+		}
+
 		fileIdsForPdp = append(fileIdsForPdp, fileIds...)
 		tagsForPdp = append(tagsForPdp, tags...)
 		blocksForPdp = append(blocksForPdp, blocks...)
 		updatedChallenges = append(updatedChallenges, fileChallenges...)
 	}
-	return this.generateProve(prover, uint64(len(filePos)), fileIdsForPdp, updatedChallenges, tagsForPdp, blocksForPdp)
+
+	proveData, err := this.generateProve(prover, uint64(len(filePos)), fileIdsForPdp, updatedChallenges, tagsForPdp, blocksForPdp)
+	if err != nil {
+		return nil, err
+	}
+
+	// add first scoop from the fist block in prove data
+	if this.Sector.IsPlots {
+		proveData.PlotData = scoopData
+	}
+
+	buf := new(bytes.Buffer)
+	err = proveData.Serialize(buf)
+	if err != nil {
+		log.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
+		return nil, fmt.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
+	}
+	return buf.Bytes(), nil
 }
 
 func (this *SectorPDPItem) initProverWithTagsForFile(prover *pdp.Pdp, fileHash string, proveParam *fs.ProveParam, cids []*cid.Cid) error {
@@ -264,7 +317,7 @@ func (this *SectorPDPItem) prepareForPdpCal(prover *pdp.Pdp, fileHash string, pr
 	return fileIDs, tags, blocks, nil
 }
 
-func (this *SectorPDPItem) generateProve(prover *pdp.Pdp, fileNum uint64, fileIds []pdp.FileID, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) ([]byte, error) {
+func (this *SectorPDPItem) generateProve(prover *pdp.Pdp, fileNum uint64, fileIds []pdp.FileID, challenges []pdp.Challenge, tags [][]byte, blocks [][]byte) (*fs.SectorProveData, error) {
 	pdpTags := make([]pdp.Tag, 0)
 	pdpBlocks := make([]pdp.Block, 0)
 
@@ -288,21 +341,13 @@ func (this *SectorPDPItem) generateProve(prover *pdp.Pdp, fileNum uint64, fileId
 		return nil, fmt.Errorf("GenerateProofWithMerklePath for sector %d error %s", this.SectorId, err)
 	}
 
-	proveData := &fs.SectorProveData{
+	return &fs.SectorProveData{
 		ProveFileNum: fileNum,
 		BlockNum:     uint64(len(blocks)),
 		Proofs:       proofs,
 		Tags:         pdpTags,
 		MerklePath:   mpath,
-	}
-
-	buf := new(bytes.Buffer)
-	err = proveData.Serialize(buf)
-	if err != nil {
-		log.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
-		return nil, fmt.Errorf("SectorProveData serialize for sector %d error %s", this.SectorId, err)
-	}
-	return buf.Bytes(), nil
+	}, nil
 }
 
 // from the challenge indexes
