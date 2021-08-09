@@ -2177,11 +2177,7 @@ func TestSaveFilePrefixForFileStore(t *testing.T) {
 
 func compareProveParam(param1 *fsstore.ProveParam, param2 *fsstore.ProveParam) bool {
 	if param1.FileHash != param2.FileHash ||
-		param1.LuckyNum != param2.LuckyNum ||
-		param1.BakHeight != param2.BakHeight ||
-		param1.BakNum != param2.BakNum ||
 		param1.FirstProveHeight != param2.FirstProveHeight ||
-		param1.BrokenWalletAddr != param2.BrokenWalletAddr ||
 		!bytes.Equal(param1.PDPParam, param2.PDPParam) {
 		return false
 	}
@@ -2202,9 +2198,6 @@ func TestSaveGetProveTasks(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		fileHash := RandStringBytes(20)
-		luckyNum := rand.Uint64()
-		bakHeight := rand.Uint64()
-		bakNum := rand.Uint64()
 		pdpParam := make([]byte, 100)
 		rand.Read(pdpParam)
 		var brokenWalletAddr [20]byte
@@ -2212,18 +2205,14 @@ func TestSaveGetProveTasks(t *testing.T) {
 		rand.Read(brokenWalletAddr[:])
 
 		height := rand.Uint64()
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height, pdpParam)
+		err = max.saveProveTask(fileHash, height, pdpParam)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		data[fileHash] = &fsstore.ProveParam{
 			FileHash:         fileHash,
-			LuckyNum:         luckyNum,
-			BakHeight:        bakHeight,
-			BakNum:           bakNum,
 			FirstProveHeight: height,
-			BrokenWalletAddr: brokenWalletAddr,
 			PDPParam:         pdpParam,
 		}
 	}
@@ -2274,17 +2263,11 @@ func TestDeleteProveTask(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		fileHash := RandStringBytes(20)
-		luckyNum := rand.Uint64()
-		bakHeight := rand.Uint64()
-		bakNum := rand.Uint64()
 		pdpParam := make([]byte, 100)
 		rand.Read(pdpParam)
-		var brokenWalletAddr [20]byte
-
-		rand.Read(brokenWalletAddr[:])
 		height := rand.Uint64()
 
-		err = max.saveProveTask(fileHash, luckyNum, bakHeight, bakNum, brokenWalletAddr, height, pdpParam)
+		err = max.saveProveTask(fileHash, height, pdpParam)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2293,11 +2276,7 @@ func TestDeleteProveTask(t *testing.T) {
 
 		data[fileHash] = &fsstore.ProveParam{
 			FileHash:         fileHash,
-			LuckyNum:         luckyNum,
-			BakHeight:        bakHeight,
-			BakNum:           bakNum,
 			FirstProveHeight: height,
-			BrokenWalletAddr: brokenWalletAddr,
 			PDPParam:         pdpParam,
 		}
 	}
