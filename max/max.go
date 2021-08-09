@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/saveio/max/max/sector"
 	"io"
 	"os"
 	"path"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/saveio/max/max/sector"
 
 	humanize "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
 	tar "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmQine7gvHncNevKtG9QXxf3nXcwSj6aDDmMm52mHofEEp/tar-utils"
@@ -1452,6 +1453,9 @@ func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string
 }
 
 func (this *MaxService) getAccoutAddress() common.Address {
+	if this.chain.Native.Fs == nil || this.chain.Native.Fs.DefAcc == nil {
+		return common.Address{}
+	}
 	return this.chain.Native.Fs.DefAcc.Address
 }
 
