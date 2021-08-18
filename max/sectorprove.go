@@ -62,7 +62,7 @@ func (this *MaxService) loadSectorProveTasks() error {
 			continue
 		}
 
-		if sector.GetFirstProveHeight() != 0 && sector.GetTotalBlockCount() != 0 {
+		if sector.GetTotalBlockCount() != 0 {
 			err = this.addSectorProveTask(sectorId)
 			if err != nil {
 				return fmt.Errorf("addSectorProveTask error %s", err)
