@@ -240,6 +240,7 @@ func Decode(v string) (*Cid, error) {
 		return nil, err
 	}
 
+	data = append([]byte(saveCidPrefix), data[:]...)
 	return Cast(data)
 }
 
@@ -331,7 +332,14 @@ func (c *Cid) String() string {
 	case 0:
 		return c.prefix + c.hash.B58String()
 	case 1:
-		mbstr, err := mbase.Encode(mbase.Base58BTC, c.bytesV1())
+		data := c.bytesV1()
+		if len(data) < saveCidPrefixLen {
+			panic("wrong prefix length")
+		}
+
+		data = data[saveCidPrefixLen:]
+
+		mbstr, err := mbase.Encode(mbase.Base58BTC, data)
 		if err != nil {
 			panic("should not error with hardcoded mbase: " + err.Error())
 		}
