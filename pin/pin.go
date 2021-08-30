@@ -25,7 +25,7 @@ var pinDatastoreKey = ds.NewKey("/local/pins")
 var emptyKey *cid.Cid
 
 func init() {
-	e, err := cid.Decode("SaveQmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
+	e, err := cid.Decode(cid.SaveCidPrefix + "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n")
 	if err != nil {
 		log.Error("failed to decode empty key constant")
 		os.Exit(1)

@@ -525,11 +525,22 @@ func addFileAndCheckFileContent(max *MaxService, initCfg *Config, fileCfg *FileC
 
 func TestNodesFromFileNormal(t *testing.T) {
 	initCfg := &Config{"", true, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, nil, ""}
-	fileCfg := &FileConfig{"", true, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+	fileCfg := &FileConfig{"", true, CHUNK_SIZE / 2, RandStringBytes(20), false, "", nil}
 
-	_, err := addFileAndCheckFileContent(nil, initCfg, fileCfg)
+	result, err := addFileAndCheckFileContent(nil, initCfg, fileCfg)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	t.Log(result.root)
+
+	cids, err := getCidsFromNodelist(result.list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range cids {
+		t.Log(c.String())
 	}
 }
 

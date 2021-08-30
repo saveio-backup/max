@@ -203,9 +203,11 @@ func (this *SectorPDPItem) doPdpCalculationForSector(filePos []*sector.FilePos, 
 
 			index := pos.BlockIndexes[0] % fileInfo.PlotInfo.Nonces
 			count := uint64(0)
+
+			cidPrefix := cid.SaveCidPrefix
 			for _, cid := range cids {
 				cidStr := cid.String()
-				if strings.HasPrefix(cidStr, "Qm") {
+				if strings.HasPrefix(cidStr, cidPrefix+"Qm") {
 					continue
 				}
 				count++

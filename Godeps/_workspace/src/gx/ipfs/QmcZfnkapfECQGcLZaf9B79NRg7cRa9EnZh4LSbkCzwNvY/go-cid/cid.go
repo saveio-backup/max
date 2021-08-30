@@ -52,7 +52,7 @@ var (
 	// by this Cid version
 	ErrInvalidEncoding = errors.New("invalid base encoding")
 
-	// cid must start with saveCidPrefix
+	// cid must start with SaveCidPrefix
 	ErrInvalidPrefix = errors.New("invalid cid prefix")
 )
 
@@ -134,7 +134,7 @@ func NewCidV0(mhash mh.Multihash) *Cid {
 		version: 0,
 		codec:   DagProtobuf,
 		hash:    mhash,
-		prefix:  saveCidPrefix,
+		prefix:  SaveCidPrefix,
 	}
 }
 
@@ -145,7 +145,7 @@ func NewCidV1(codecType uint64, mhash mh.Multihash) *Cid {
 		version: 1,
 		codec:   codecType,
 		hash:    mhash,
-		prefix:  saveCidPrefix,
+		prefix:  SaveCidPrefix,
 	}
 }
 
@@ -170,8 +170,8 @@ func NewPrefixV1(codecType uint64, mhType uint64) Prefix {
 	}
 }
 
-const saveCidPrefix = "Save"
-const saveCidPrefixLen = len(saveCidPrefix)
+const SaveCidPrefix = "Save"
+const SaveCidPrefixLen = len(SaveCidPrefix)
 
 // Cid represents a self-describing content adressed
 // identifier. It is formed by a Version, a Codec (which indicates
@@ -216,15 +216,15 @@ func Parse(v interface{}) (*Cid, error) {
 // starting with "Qm" are considered CidV0 and treated directly
 // as B58-encoded multihashes.
 func Decode(v string) (*Cid, error) {
-	if len(v) < 2+saveCidPrefixLen {
+	if len(v) < 2+SaveCidPrefixLen {
 		return nil, ErrCidTooShort
 	}
 
-	if !strings.HasPrefix(v, saveCidPrefix) {
+	if !strings.HasPrefix(v, SaveCidPrefix) {
 		return nil, ErrInvalidPrefix
 	}
 
-	v = v[saveCidPrefixLen:]
+	v = v[SaveCidPrefixLen:]
 
 	if len(v) == 46 && v[:2] == "Qm" {
 		hash, err := mh.FromB58String(v)
@@ -240,7 +240,7 @@ func Decode(v string) (*Cid, error) {
 		return nil, err
 	}
 
-	data = append([]byte(saveCidPrefix), data[:]...)
+	data = append([]byte(SaveCidPrefix), data[:]...)
 	return Cast(data)
 }
 
@@ -267,15 +267,15 @@ func uvError(read int) error {
 // Please use decode when parsing a regular Cid string, as Cast does not
 // expect multibase-encoded data. Cast accepts the output of Cid.Bytes().
 func Cast(data []byte) (*Cid, error) {
-	if len(data) < saveCidPrefixLen {
+	if len(data) < SaveCidPrefixLen {
 		return nil, ErrCidTooShort
 	}
 
-	if !bytes.Equal(data[:saveCidPrefixLen], []byte(saveCidPrefix)) {
+	if !bytes.Equal(data[:SaveCidPrefixLen], []byte(SaveCidPrefix)) {
 		return nil, ErrInvalidPrefix
 	}
 
-	data = data[saveCidPrefixLen:]
+	data = data[SaveCidPrefixLen:]
 
 	if len(data) == 34 && data[0] == 18 && data[1] == 32 {
 		h, err := mh.Cast(data)
@@ -287,7 +287,7 @@ func Cast(data []byte) (*Cid, error) {
 			codec:   DagProtobuf,
 			version: 0,
 			hash:    h,
-			prefix:  saveCidPrefix,
+			prefix:  SaveCidPrefix,
 		}, nil
 	}
 
@@ -315,7 +315,7 @@ func Cast(data []byte) (*Cid, error) {
 		version: vers,
 		codec:   codec,
 		hash:    h,
-		prefix:  saveCidPrefix,
+		prefix:  SaveCidPrefix,
 	}, nil
 }
 
@@ -333,11 +333,11 @@ func (c *Cid) String() string {
 		return c.prefix + c.hash.B58String()
 	case 1:
 		data := c.bytesV1()
-		if len(data) < saveCidPrefixLen {
+		if len(data) < SaveCidPrefixLen {
 			panic("wrong prefix length")
 		}
 
-		data = data[saveCidPrefixLen:]
+		data = data[SaveCidPrefixLen:]
 
 		mbstr, err := mbase.Encode(mbase.Base58BTC, data)
 		if err != nil {
