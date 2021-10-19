@@ -1041,7 +1041,7 @@ func (this *MaxService) DeleteFile(fileHash string) error {
 		return err
 	}
 
-	if !this.SupportFileProve() {
+	if this.SupportFileProve() {
 		blockAttrs, err := this.fsstore.GetBlockAttrsWithPrefix(fileHash)
 		if err != nil {
 			log.Errorf("[DeleteFile] GetBlockAttrsWithPrefix error : %s", err)
