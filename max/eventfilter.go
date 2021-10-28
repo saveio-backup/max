@@ -20,7 +20,7 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 	}
 
 	// make sure this run before load pdp task to get block height and hash
-	_, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
+	height, _, err := this.getCurrentBlockHeightAndHashFromChainAndUpdateCache()
 	if err != nil {
 		return err
 	}
@@ -39,6 +39,12 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 		if err != nil {
 			log.Errorf("loadLatestHeight error %s", err)
 		}
+
+		if latestHeight == 0 {
+			latestHeight = height
+			log.Debugf("latestHeight not found, set latest height to %d", height)
+		}
+
 		log.Debugf("eventfilter latestHeight is %d", latestHeight)
 
 		defer ticker.Stop()
