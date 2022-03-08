@@ -426,7 +426,7 @@ func (this *FilePDPItem) getFsContract() *fscontract.Fs {
 }
 
 func (this *FilePDPItem) getAccountAddress() common.Address {
-	return this.getFsContract().DefAcc.Address
+	return this.getFsContract().Client.GetDefaultAccount().Address
 }
 
 func (this *FilePDPItem) shouldSavePdpResult() bool {

@@ -1453,10 +1453,10 @@ func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string
 }
 
 func (this *MaxService) getAccoutAddress() common.Address {
-	if this.chain.Native.Fs == nil || this.chain.Native.Fs.DefAcc == nil {
+	if this.chain.Native.Fs == nil || this.chain.Native.Fs.Client.GetDefaultAccount() == nil {
 		return common.Address{}
 	}
-	return this.chain.Native.Fs.DefAcc.Address
+	return this.chain.Native.Fs.Client.GetDefaultAccount().Address
 }
 
 func (this *MaxService) getFsContract() *fscontract.Fs {

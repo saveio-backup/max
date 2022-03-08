@@ -154,7 +154,7 @@ func (this *MaxService) proveSector(sectorId uint64) error {
 		return nil
 	}
 
-	hash, err := this.getFsContract().Client.GetBlockHash(challengeHeight)
+	hash, err := this.getFsContract().Client.GetClient().GetBlockHash(challengeHeight)
 	if err != nil {
 		log.Errorf("proveSector, getBlockHash for height %d error %s", height, err)
 		return fmt.Errorf("proveSector, getBlockHash for height %d error %s", height, err)

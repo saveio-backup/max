@@ -140,13 +140,13 @@ func (this *MaxService) getCurrentBlockHeightAndHashFromChainAndUpdateCache() (u
 
 	fsContract := this.chain.Native.Fs
 
-	height, err := fsContract.Client.GetCurrentBlockHeight()
+	height, err := fsContract.Client.GetClient().GetCurrentBlockHeight()
 	if err != nil {
 		log.Errorf("GetCurrentBlockHeight error : %s", err)
 		return 0, emptyHash, err
 	}
 
-	blockHash, err := fsContract.Client.GetBlockHash(height)
+	blockHash, err := fsContract.Client.GetClient().GetBlockHash(height)
 	if err != nil {
 		log.Errorf("GetBlockHash error : %s", err)
 		return 0, emptyHash, err

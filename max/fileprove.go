@@ -64,7 +64,7 @@ func (this *MaxService) StartPDPVerify(fileHash string) error {
 	} else {
 		var found bool
 		for _, detail := range fileProveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+			if detail.WalletAddr.ToBase58() == fsContract.Client.GetDefaultAccount().Address.ToBase58() {
 				found = true
 				log.Debugf("[StartPDPVerify] prove detail found with matching address for filehash: %s", fileHash)
 				break
@@ -298,7 +298,7 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 		}
 
 		for _, detail := range fileProveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+			if detail.WalletAddr.ToBase58() == fsContract.Client.GetDefaultAccount().Address.ToBase58() {
 				times = detail.ProveTimes
 				finished = detail.Finished
 				firstProveHeight = detail.BlockHeight
@@ -319,7 +319,7 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 			sectorId := this.sectorManager.GetFileSectorId(fileHash)
 			if sectorId == 0 {
 				for _, sectorRef := range fileInfo.SectorRefs {
-					if sectorRef.NodeAddr.ToBase58() == fsContract.DefAcc.Address.ToBase58() {
+					if sectorRef.NodeAddr.ToBase58() == fsContract.Client.GetDefaultAccount().Address.ToBase58() {
 						// find matching file info, add  to sector
 						_, err = this.sectorManager.AddFileToSector(fileInfo.ProveLevel, fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize, sectorRef.SectorID)
 						if err != nil {
