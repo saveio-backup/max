@@ -14,8 +14,8 @@ require (
 	github.com/onsi/ginkgo v1.12.1
 	github.com/onsi/gomega v1.10.0
 	github.com/rs/cors v1.7.0
-	github.com/saveio/themis v1.0.135-0.20210802052006-7b1a7f1fef1c
-	github.com/saveio/themis-go-sdk v0.0.0-20210802052239-10a9844e20d5
+	github.com/saveio/themis v1.0.167-0.20220314081234-000f4d9925e5
+	github.com/saveio/themis-go-sdk v0.0.0-20220314081916-ae3c56d4c69e
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/goleveldb v1.0.1-0.20190923125748-758128399b1d
 	golang.org/x/crypto v0.0.0-20210415154028-4f45737414dc
