@@ -544,6 +544,76 @@ func TestNodesFromFileNormal(t *testing.T) {
 	}
 }
 
+func TestNodesFromFile(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	filePath := testdir + "/normalfile"
+	fileSize := 1024 * 1024 // 1M
+	err = makeFileWithLen(filePath, uint64(fileSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileCfg := &FileConfig{filePath, false, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootCid, err := cid.Decode(hashes[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cids, err := getFileAllCidsNoCache(max, context.TODO(), rootCid)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hashes) != len(cids) {
+		t.Fatalf("length no match")
+	}
+
+	for index, c := range cids {
+		t.Log(c)
+		if c.String() != hashes[index] {
+			t.Fatalf("blockHash no match for index %d\n", index)
+		}
+	}
+}
+
+func TestNodesFromDir(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	filePath := testdir + "/normalfile"
+	fileSize := 1024 * 1024 // 1M
+	err = makeFileWithLen(filePath, uint64(fileSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileCfg := &FileConfig{testdir, false, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range hashes {
+		t.Log(k, v)
+	}
+}
+
 // test memory consumption for calling nodesFromFile and traverse merkle dag
 func TestNodesFromFileLarge(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
