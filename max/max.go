@@ -516,18 +516,6 @@ func (this *MaxService) NodesFromDir(path string, filePrefix string, encrypt boo
 		blockHashes = append(blockHashes, c.String())
 	}
 
-	// for child files
-	for _, v := range root.Links() {
-		cids, err := this.GetFileAllCids(context.TODO(), v.Cid)
-		if err != nil {
-			log.Errorf("[NodesFromDir] getFileAllCids in loop error : %s", err)
-			return nil, err
-		}
-		for _, c := range cids {
-			blockHashes = append(blockHashes, c.String())
-		}
-	}
-
 	err = this.PinRoot(context.TODO(), root.Cid())
 	if err != nil {
 		log.Errorf("[NodesFromDir] pin root  error : %s", err)
@@ -800,7 +788,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 }
 
 func (this *MaxService) GetAllNodesFromDir(path string, filePrefix string, encrypt bool, password string,
-	toplevel bool) (*merkledag.DirNode, []*helpers.UnixfsNode, error) {
+	toplevel bool) (*merkledag.ProtoNode, []*helpers.UnixfsNode, error) {
 	// handle prefix
 	cidVer := 0
 	hashFunStr := "sha2-256"
@@ -824,7 +812,7 @@ func (this *MaxService) GetAllNodesFromDir(path string, filePrefix string, encry
 		return nil, nil, err
 	}
 
-	var top merkledag.DirNode
+	var top merkledag.ProtoNode
 	var nodes []*helpers.UnixfsNode
 	for _, v := range files {
 		if v.IsDir() {
@@ -846,8 +834,8 @@ func (this *MaxService) GetAllNodesFromDir(path string, filePrefix string, encry
 				b[i] = letterBytes[rand.Intn(len(letterBytes))]
 			}
 			return string(b)
-		}(20)
-		stringReader := strings.NewReader(p)
+		}(0)
+		stringReader := strings.NewReader("")
 		reader = io.MultiReader(stringReader, reader)
 
 		chnk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
