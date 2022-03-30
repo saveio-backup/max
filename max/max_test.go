@@ -606,9 +606,9 @@ func TestNodesFromDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	//fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
-	//fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/ooo"
-	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, true)
+	fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/yyy"
+	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
 	if err != nil {
 		t.Fatal(err)
 	}

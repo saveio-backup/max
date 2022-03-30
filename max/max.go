@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/saveio/dsp-go-sdk/types/prefix"
 	"github.com/saveio/max/max/sector"
 
 	humanize "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
@@ -452,9 +452,7 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 	return blockHashes, nil
 }
 
-func (this *MaxService) NodesFromDir(path string, filePrefix string, encrypt bool, password string,
-	toplevel bool) (blockHashes []string, err error) {
-
+func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool, password string) (blockHashes []string, err error) {
 	dirPath, err := filepath.Abs(path)
 	if err != nil {
 		log.Errorf("[NodesFromDir] get abs path error for %s, err: %s", path, err)
@@ -470,41 +468,12 @@ func (this *MaxService) NodesFromDir(path string, filePrefix string, encrypt boo
 		return nil, errors.New("not a directory")
 	}
 
-	root, list, err := this.GetAllNodesFromDir(dirPath, filePrefix, encrypt, password, toplevel)
+	root := &merkledag.ProtoNode{}
+	list := make([]*helpers.UnixfsNode, 0)
+	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password)
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
 		return nil, err
-	}
-
-	// store file
-	if this.SupportFileStore() && !encrypt {
-		_, _, err = this.buildFileStoreForFile(dirPath, filePrefix, root, list)
-		if err != nil {
-			log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
-			return nil, err
-		}
-	} else {
-		// when encryption is used, cannot only use filestore since we need somewhere to store the
-		// encrypted file, the file is not pinned becasue it will be useless when upload file finish
-		err = this.blockstore.Put(root)
-		if err != nil {
-			log.Errorf("[NodesFromDir] put root to block store error : %s", err)
-			return nil, err
-
-		}
-		for _, node := range list {
-			dagNode, err := node.GetDagNode()
-			if err != nil {
-				log.Errorf("[NodesFromDir] GetDagNode error : %s", err)
-				return nil, err
-			}
-
-			err = this.blockstore.Put(dagNode)
-			if err != nil {
-				log.Errorf("[NodesFromDir] put dagNode to block store error : %s", err)
-				return nil, err
-			}
-		}
 	}
 
 	cids, err := this.GetFileAllCids(context.TODO(), root.Cid())
@@ -518,11 +487,11 @@ func (this *MaxService) NodesFromDir(path string, filePrefix string, encrypt boo
 
 	err = this.PinRoot(context.TODO(), root.Cid())
 	if err != nil {
-		log.Errorf("[NodesFromDir] pin root  error : %s", err)
+		log.Errorf("[NodesFromDir] pin root error : %s", err)
 		return nil, err
 	}
 
-	log.Debugf("[NodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", path, filePrefix, encrypt)
+	log.Debugf("[NodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", path, dirPrefix, encrypt)
 	return blockHashes, nil
 }
 
@@ -787,120 +756,155 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 	return root, list, nil
 }
 
-func (this *MaxService) GetAllNodesFromDir(path string, filePrefix string, encrypt bool, password string,
-	toplevel bool) (*merkledag.ProtoNode, []*helpers.UnixfsNode, error) {
-	// handle prefix
-	cidVer := 0
-	hashFunStr := "sha2-256"
-	prefix, err := merkledag.PrefixForCidVersion(cidVer)
-	if err != nil {
-		log.Errorf("[GetAllNodesFromDir]: PrefixForCidVersion error : %s", err)
-		return nil, nil, err
-	}
-	hashFunCode, _ := mh.Names[strings.ToLower(hashFunStr)]
-	if err != nil {
-		log.Errorf("[GetAllNodesFromDir]: get hashFunCode error : %s", err)
-		return nil, nil, err
-	}
-	prefix.MhType = hashFunCode
-	prefix.MhLength = -1
-
+func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*helpers.UnixfsNode, dirPath string,
+	dirPrefix string, encrypt bool, password string) error {
 	// get files from directory
-	files, err := ioutil.ReadDir(path)
+	files, err := ioutil.ReadDir(dirPath)
 	if err != nil {
-		log.Errorf("[GetAllNodesFromDir]: open dir %s error : %s", path, err)
-		return nil, nil, err
+		log.Errorf("[GetAllNodesFromDir]: open dir %s error : %s", dirPath, err)
+		return err
 	}
-
-	var top merkledag.ProtoNode
-	var nodes []*helpers.UnixfsNode
 	for _, v := range files {
 		if v.IsDir() {
-			continue
-		}
-		filename := filepath.Join(path, v.Name())
-		file, err := os.Open(filename)
-		if err != nil {
-			log.Errorf("[GetAllNodesFromDir]: open file error : %s", err)
-			continue
-		}
-		var reader io.Reader = file
-
-		//Insert prefix to identify a file
-		p := func(n int) string {
-			const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			b := make([]byte, n)
-			for i := range b {
-				b[i] = letterBytes[rand.Intn(len(letterBytes))]
+			dirName := filepath.Join(dirPath, v.Name())
+			subRoot := &merkledag.ProtoNode{}
+			// TODO add owner
+			filePrefix := prefix.FilePrefix{
+				Version:    prefix.PREFIX_VERSION,
+				Encrypt:    encrypt,
+				EncryptPwd: password,
+				Owner:      common.Address{},
+				FileSize:   uint64(0),
+				FileName:   dirName,
 			}
-			return string(b)
-		}(0)
-		stringReader := strings.NewReader("")
-		reader = io.MultiReader(stringReader, reader)
-
-		chnk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
-		if err != nil {
-			log.Errorf("[GetAllNodesFromDir]: create chunker error : %s", err)
-			continue
-		}
-
-		params := &helpers.DagBuilderParams{
-			RawLeaves: true,
-			Prefix:    &prefix,
-			Maxlinks:  helpers.DefaultLinksPerBlock,
-			NoCopy:    false,
-		}
-		db := params.New(chnk)
-
-		var root ipld.Node
-		var list []*helpers.UnixfsNode
-		root, list, err = balanced.LayoutAndGetNodes(db)
-		if err != nil {
-			log.Errorf("[GetAllNodesFromDir]: LayoutAndGetNodes error : %s", err)
-			continue
-		}
-
-		// store file
-		if this.SupportFileStore() && !encrypt {
-			_, _, err = this.buildFileStoreForFile(filename, p, root, list)
+			err = filePrefix.MakeSalt()
 			if err != nil {
-				log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
+				log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
+				continue
+			}
+			dirPrefixStr := filePrefix.String()
+			err := this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: GetAllNodesFromDir error : %s", err)
+				return err
+			}
+			// build struct after save blocks singly
+			err = root.AddNodeLink(subRoot.Cid().String(), subRoot)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
 				continue
 			}
 		} else {
-			// when encryption is used, cannot only use filestore since we need somewhere to store the
-			// encrypted file, the file is not pinned becasue it will be useless when upload file finish
-			err = this.blockstore.Put(root)
+			fileName := filepath.Join(dirPath, v.Name())
+			file, err := os.Open(fileName)
 			if err != nil {
-				log.Errorf("[NodesFromDir] put root to block store error : %s", err)
+				log.Errorf("[GetAllNodesFromDir]: open file error : %s", err)
 				continue
 			}
-			for _, node := range list {
-				dagNode, err := node.GetDagNode()
-				if err != nil {
-					log.Errorf("[NodesFromDir] GetDagNode error : %s", err)
-					continue
-				}
+			reader := io.Reader(file)
+			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: create chunker error : %s", err)
+				continue
+			}
+			// handle dag prefix
+			cidVer := 0
+			hashFunStr := "sha2-256"
+			dagPrefix, err := merkledag.PrefixForCidVersion(cidVer)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: PrefixForCidVersion error : %s", err)
+				return err
+			}
+			hashFunCode, _ := mh.Names[strings.ToLower(hashFunStr)]
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: get hashFunCode error : %s", err)
+				return err
+			}
+			dagPrefix.MhType = hashFunCode
+			dagPrefix.MhLength = -1
+			dagBuilder := &helpers.DagBuilderParams{
+				RawLeaves: true,
+				Prefix:    &dagPrefix,
+				Maxlinks:  helpers.DefaultLinksPerBlock,
+				NoCopy:    false,
+			}
+			db := dagBuilder.New(chunk)
 
-				err = this.blockstore.Put(dagNode)
-				if err != nil {
-					log.Errorf("[NodesFromDir] put dagNode to block store error : %s", err)
-					continue
-				}
+			var subRoot ipld.Node
+			var subList []*helpers.UnixfsNode
+			subRoot, subList, err = balanced.LayoutAndGetNodes(db)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: LayoutAndGetNodes error : %s", err)
+				continue
+			}
+
+			// save single file with blocks
+			stat, err := os.Stat(fileName)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: get file stat error : %s", err)
+				continue
+			}
+			// TODO add owner
+			filePrefix := prefix.FilePrefix{
+				Version:    prefix.PREFIX_VERSION,
+				Encrypt:    encrypt,
+				EncryptPwd: password,
+				Owner:      common.Address{},
+				FileSize:   uint64(stat.Size()),
+				FileName:   fileName,
+			}
+			err = filePrefix.MakeSalt()
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
+				continue
+			}
+			filePrefixStr := filePrefix.String()
+			this.saveFileBlocks(fileName, filePrefixStr, encrypt, subRoot, subList)
+
+			// build struct after save blocks singly
+			err = root.AddNodeLink(subRoot.Cid().String(), subRoot)
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
+				continue
+			}
+			list = append(list, subList...)
+		}
+	}
+	// save whole directory with blocks
+	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
+
+	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
+	return nil
+}
+
+func (this *MaxService) saveFileBlocks(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
+	if this.SupportFileStore() && !encrypt {
+		_, _, err := this.buildFileStoreForFile(fileName, filePrefix, root, list)
+		if err != nil {
+			log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
+			return
+		}
+	} else {
+		// when encryption is used, cannot only use filestore since we need somewhere to store the
+		// encrypted file, the file is not pinned becasue it will be useless when upload file finish
+		err := this.blockstore.Put(root)
+		if err != nil {
+			log.Errorf("[NodesFromDir] put root to block store error : %s", err)
+			return
+		}
+		for _, node := range list {
+			dagNode, err := node.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromDir] GetDagNode error : %s", err)
+				return
+			}
+			err = this.blockstore.Put(dagNode)
+			if err != nil {
+				log.Errorf("[NodesFromDir] put dagNode to block store error : %s", err)
+				return
 			}
 		}
-
-		links := append(top.Links(), &ipld.Link{
-			Name: filename,
-			Size: 1,
-			Cid:  root.Cid(),
-		})
-		top.SetLinks(links)
-		nodes = append(nodes, list...)
 	}
-
-	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", path, filePrefix, encrypt)
-	return &top, nodes, nil
 }
 
 func (this *MaxService) buildFileStoreForFile(fileName, filePrefix string, root ipld.Node, nodes []*helpers.UnixfsNode) ([]*cid.Cid, []uint64, error) {
