@@ -470,7 +470,7 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
-	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password)
+	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, "/")
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
 		return nil, err
@@ -757,7 +757,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 }
 
 func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*helpers.UnixfsNode, dirPath string,
-	dirPrefix string, encrypt bool, password string) error {
+	dirPrefix string, encrypt bool, password string, path string) error {
 	// get files from directory
 	files, err := ioutil.ReadDir(dirPath)
 	if err != nil {
@@ -783,13 +783,13 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				continue
 			}
 			dirPrefixStr := filePrefix.String()
-			err := this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password)
+			err = this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password, path+v.Name()+"/")
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: GetAllNodesFromDir error : %s", err)
 				return err
 			}
 			// build struct after save blocks singly
-			err = root.AddNodeLink(subRoot.Cid().String(), subRoot)
+			err = root.AddNodeLink(path, subRoot)
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
 				continue
@@ -807,26 +807,16 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				log.Errorf("[GetAllNodesFromDir]: create chunker error : %s", err)
 				continue
 			}
-			// handle dag prefix
-			cidVer := 0
-			hashFunStr := "sha2-256"
-			dagPrefix, err := merkledag.PrefixForCidVersion(cidVer)
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: PrefixForCidVersion error : %s", err)
-				return err
-			}
-			hashFunCode, _ := mh.Names[strings.ToLower(hashFunStr)]
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: get hashFunCode error : %s", err)
-				return err
-			}
-			dagPrefix.MhType = hashFunCode
-			dagPrefix.MhLength = -1
 			dagBuilder := &helpers.DagBuilderParams{
 				RawLeaves: true,
-				Prefix:    &dagPrefix,
-				Maxlinks:  helpers.DefaultLinksPerBlock,
-				NoCopy:    false,
+				Prefix: &cid.Prefix{
+					Codec:    cid.DagProtobuf,
+					MhLength: -1,
+					MhType:   mh.SHA2_256,
+					Version:  0,
+				},
+				Maxlinks: helpers.DefaultLinksPerBlock,
+				NoCopy:   false,
 			}
 			db := dagBuilder.New(chunk)
 
@@ -862,7 +852,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			this.saveFileBlocks(fileName, filePrefixStr, encrypt, subRoot, subList)
 
 			// build struct after save blocks singly
-			err = root.AddNodeLink(subRoot.Cid().String(), subRoot)
+			err = root.AddNodeLink(path, subRoot)
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
 				continue
