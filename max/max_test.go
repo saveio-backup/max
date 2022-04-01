@@ -617,6 +617,31 @@ func TestNodesFromDir(t *testing.T) {
 	}
 }
 
+func TestNodesLinks(t *testing.T) {
+	arr := []string{
+		"/a160",
+		"/a166",
+		"/aaa/a139",
+		"/aaa/bbb/a160",
+		"/aaa/",
+		"/",
+	}
+	for _, v := range arr {
+		path, name, file := SplitFileNameFromPath(v)
+		fmt.Println(v, path, name, file)
+	}
+}
+
+func SplitFileNameFromPath(s string) (path string, fileName string, isFile bool) {
+	if strings.HasSuffix(s, "/") {
+		return s, "", false
+	}
+	a := strings.Split(s, "/")
+	s = strings.Join(a[0:len(a)-1], "/")
+	s += "/"
+	return s, a[len(a)-1], true
+}
+
 // test memory consumption for calling nodesFromFile and traverse merkle dag
 func TestNodesFromFileLarge(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")

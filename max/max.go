@@ -852,7 +852,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			this.saveFileBlocks(fileName, filePrefixStr, encrypt, subRoot, subList)
 
 			// build struct after save blocks singly
-			err = root.AddNodeLink(path, subRoot)
+			err = root.AddNodeLink(path+v.Name(), subRoot)
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
 				continue
