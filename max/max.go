@@ -470,6 +470,7 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
+
 	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, "/")
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
@@ -828,29 +829,10 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				continue
 			}
 
-			// save single file with blocks
-			stat, err := os.Stat(fileName)
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: get file stat error : %s", err)
-				continue
-			}
-			// TODO add owner
-			filePrefix := prefix.FilePrefix{
-				Version:    prefix.PREFIX_VERSION,
-				Encrypt:    encrypt,
-				EncryptPwd: password,
-				Owner:      common.Address{},
-				FileSize:   uint64(stat.Size()),
-				FileName:   fileName,
-			}
-			err = filePrefix.MakeSalt()
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
-				continue
-			}
-			filePrefixStr := filePrefix.String()
-			this.saveFileBlocks(fileName, filePrefixStr, encrypt, subRoot, subList)
+			// can't add file prefix to block
+			this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
 
+			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
 			// build struct after save blocks singly
 			err = root.AddNodeLink(path+v.Name(), subRoot)
 			if err != nil {
@@ -861,7 +843,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 		}
 	}
 	// save whole directory with blocks
-	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
+	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, []*helpers.UnixfsNode{})
 
 	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
 	return nil
