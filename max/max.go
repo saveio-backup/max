@@ -843,7 +843,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 		}
 	}
 	// save whole directory with blocks
-	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, []*helpers.UnixfsNode{})
+	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
 
 	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
 	return nil
