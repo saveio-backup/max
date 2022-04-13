@@ -470,7 +470,6 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
-
 	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, "/")
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
@@ -803,6 +802,14 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				continue
 			}
 			reader := io.Reader(file)
+			if encrypt {
+				encryptedR, err := crypto.AESEncryptFileReader(file, password)
+				if err != nil {
+					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
+					return err
+				}
+				reader = encryptedR
+			}
 			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: create chunker error : %s", err)
@@ -986,7 +993,7 @@ func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
 	log.Debugf("[GetBlock] get block %s", cid.String())
 	block, err := this.blockstore.Get(cid)
 	if err != nil {
-		log.Errorf("[GetBlock] get error : %s", err)
+		log.Warnf("[GetBlock] get error : %s", err)
 		return nil, err
 	}
 	return block, nil
