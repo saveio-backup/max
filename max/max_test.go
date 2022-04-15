@@ -607,7 +607,7 @@ func TestNodesFromDir(t *testing.T) {
 	}
 
 	fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
-	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/ww"
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/Chain-1/Downloads/AYKnc5VDkvpb5f68XSjTyQzVHU4ZaojGxq/SaveQmb534ZACucuzh7HvkKGoA5dHWbz5zx1zVLNVVSNsy7HVG"
 	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
 	if err != nil {
 		t.Fatal(err)
@@ -2395,5 +2395,20 @@ func TestDeleteProveTask(t *testing.T) {
 		if exist {
 			t.Fatal("file hash not deleted from prove tasks")
 		}
+	}
+}
+
+func TestDecryptFile(t *testing.T) {
+	dirPath := "/Users/smallyu/work/gogs/edge-deploy/node1/Chain-1/Downloads/AYKnc5VDkvpb5f68XSjTyQzVHU4ZaojGxq/SaveQmVDm45hYuuVFTraVdEy4fVnuVMoebjfJRPbGdVp8xdSzt.ept/"
+	fileName := "v2-149a90452b5a10df7d346dcf0332033e_1440w.jpg.ept"
+	filePath := dirPath + fileName
+	p := ""
+	password := "pwd"
+	outPath := dirPath + "_" + fileName
+	fmt.Println(filePath)
+	fmt.Println(outPath)
+	err := DecryptFile(filePath, p, password, outPath)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

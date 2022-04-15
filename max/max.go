@@ -768,7 +768,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 		if v.IsDir() {
 			dirName := filepath.Join(dirPath, v.Name())
 			subRoot := &merkledag.ProtoNode{}
-			// TODO add owner
+			// TODO wangyu add owner
 			filePrefix := prefix.FilePrefix{
 				Version:    prefix.PREFIX_VERSION,
 				Encrypt:    encrypt,
@@ -776,6 +776,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				Owner:      common.Address{},
 				FileSize:   uint64(0),
 				FileName:   dirName,
+				FileType:   prefix.FILETYPE_DIR,
 			}
 			err = filePrefix.MakeSalt()
 			if err != nil {
@@ -809,6 +810,23 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					return err
 				}
 				reader = encryptedR
+				// TODO wangyu add owner
+				filePrefix := prefix.FilePrefix{
+					Version:    prefix.PREFIX_VERSION,
+					Encrypt:    encrypt,
+					EncryptPwd: password,
+					Owner:      common.Address{},
+					FileSize:   uint64(0),
+					FileName:   fileName,
+					FileType:   prefix.FILETYPE_FILE,
+				}
+				err = filePrefix.MakeSalt()
+				if err != nil {
+					log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
+					continue
+				}
+				stringReader := strings.NewReader(filePrefix.String())
+				reader = io.MultiReader(stringReader, reader)
 			}
 			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 			if err != nil {
