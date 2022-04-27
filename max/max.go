@@ -467,6 +467,15 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 		log.Errorf("[NodesFromDir] %s is not a directory", dirPath)
 		return nil, errors.New("not a directory")
 	}
+	empty, err := IsDirEmpty(dirPath)
+	if err != nil {
+		log.Errorf("[GetAllNodesFromDir]: IsDirEmpty error : %s", err)
+		return nil, err
+	}
+	if empty {
+		log.Errorf("[GetAllNodesFromDir]: dir %s is empty", dirPath)
+		return nil, errors.New("directory is empty")
+	}
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
@@ -756,6 +765,20 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 	return root, list, nil
 }
 
+func IsDirEmpty(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
+}
+
 func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*helpers.UnixfsNode, dirPath string,
 	dirPrefix string, encrypt bool, password string, path string) error {
 	// get files from directory
@@ -767,6 +790,15 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 	for _, v := range files {
 		if v.IsDir() {
 			dirName := filepath.Join(dirPath, v.Name())
+			empty, err := IsDirEmpty(dirName)
+			if err != nil {
+				log.Warnf("[GetAllNodesFromDir]: IsDirEmpty error : %s", err)
+				continue
+			}
+			if empty {
+				log.Warnf("[GetAllNodesFromDir]: IsDirEmpty dir %s is empty", dirName)
+				continue
+			}
 			subRoot := &merkledag.ProtoNode{}
 			// TODO wangyu add owner
 			filePrefix := prefix.FilePrefix{
@@ -857,6 +889,11 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			// can't add file prefix to block
 			this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
 
+			// debug log
+			// fmt.Println(subRoot.Cid(), fileName)
+			// for _, v := range subRoot.Links() {
+			// 	fmt.Println("  ", v.Cid)
+			// }
 			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
 			// build struct after save blocks singly
 			err = root.AddNodeLink(path+v.Name(), subRoot)
