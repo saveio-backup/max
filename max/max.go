@@ -59,6 +59,7 @@ import (
 	"github.com/saveio/max/unixfs/archive"
 	sdk "github.com/saveio/themis-go-sdk"
 	fscontract "github.com/saveio/themis-go-sdk/fs"
+	keypair "github.com/saveio/themis/crypto/keypair"
 )
 
 //var log = logging.Logger("max")
@@ -1744,4 +1745,12 @@ func DecryptFile(file, prefix, password, outPath string) error {
 
 func EncryptFile(file, password, outPath string) error {
 	return crypto.AESEncryptFile(file, password, outPath)
+}
+
+func DecryptFileA(file, prefix, password, outPath string, priKey keypair.PrivateKey) error {
+	return crypto.CEIESDecryptFile(file, prefix, password, outPath, priKey)
+}
+
+func EncryptFileA(file, password, outPath string, pubKey keypair.PublicKey) error {
+	return crypto.CEIESEncryptFile(file, password, outPath, pubKey)
 }

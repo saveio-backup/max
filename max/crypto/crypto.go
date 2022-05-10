@@ -2,10 +2,13 @@ package crypto
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"github.com/saveio/themis/crypto/encrypt"
 	"io"
 	"os"
 	"strings"
@@ -20,7 +23,7 @@ const (
 	AES SymmetricScheme = iota
 )
 
-var names []string = []string{
+var names = []string{
 	"AES",
 }
 
@@ -32,6 +35,7 @@ func GetScheme(name string) (SymmetricScheme, error) {
 	}
 	return 0, errors.New("unknown symmetric scheme " + name)
 }
+
 func kdf(pwd []byte, salt []byte) (dKey []byte, err error) {
 	param := keypair.GetScryptParameters()
 	if param.DKLen < 32 {
@@ -179,7 +183,7 @@ func AESDecryptFile(file, prefix, password, out string) error {
 	return nil
 }
 
-func AESDecrptyFileWriter(inFile *os.File, password string) (io.Writer, error) {
+func AESDecryptFileWriter(inFile *os.File, password string) (io.Writer, error) {
 	extData := make([]byte, 32)
 	inFile.ReadAt(extData, 0)
 	_, err := inFile.Seek(int64(len(extData)), io.SeekStart)
@@ -205,4 +209,29 @@ func AESDecrptyFileWriter(inFile *os.File, password string) (io.Writer, error) {
 	stream := cipher.NewOFB(block, nonce)
 	writer := &cipher.StreamWriter{S: stream}
 	return writer, nil
+}
+
+var eciesScheme = encrypt.AES128withSHA256
+
+func CEIESEncryptFile(file string, password, out string, pubKey crypto.PublicKey) error {
+	ct, err := encrypt.Encrypt(eciesScheme, pubKey, []byte(password), nil, nil)
+	if err != nil {
+		return err
+	}
+	ekey := hex.EncodeToString(ct)
+	err = AESEncryptFile(file, ekey, out)
+	return err
+}
+
+func CEIESDecryptFile(file, prefix, eKey, out string, priKey crypto.PrivateKey) error {
+	decodeString, err := hex.DecodeString(eKey)
+	if err != nil {
+		return err
+	}
+	password, err := encrypt.Decrypt(priKey, decodeString, nil, nil)
+	if err != nil {
+		return err
+	}
+	err = AESDecryptFile(file, prefix, string(password), out)
+	return err
 }
