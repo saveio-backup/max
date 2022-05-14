@@ -213,25 +213,25 @@ func AESDecryptFileWriter(inFile *os.File, password string) (io.Writer, error) {
 
 var eciesScheme = encrypt.AES128withSHA256
 
-func CEIESEncryptFile(file string, password, out string, pubKey crypto.PublicKey) error {
+func CEIESEncryptFile(file string, password, out string, pubKey crypto.PublicKey) (string, error) {
 	ct, err := encrypt.Encrypt(eciesScheme, pubKey, []byte(password), nil, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	ekey := hex.EncodeToString(ct)
 	err = AESEncryptFile(file, ekey, out)
-	return err
+	return ekey, err
 }
 
-func CEIESDecryptFile(file, prefix, eKey, out string, priKey crypto.PrivateKey) error {
-	decodeString, err := hex.DecodeString(eKey)
+func CEIESDecryptFile(file, prefix, password, out string, priKey crypto.PrivateKey) error {
+	eKey, err := encrypt.Decrypt(priKey, []byte(password), nil, nil)
 	if err != nil {
 		return err
 	}
-	password, err := encrypt.Decrypt(priKey, decodeString, nil, nil)
+	decodeString, err := hex.DecodeString(string(eKey))
 	if err != nil {
 		return err
 	}
-	err = AESDecryptFile(file, prefix, string(password), out)
+	err = AESDecryptFile(file, prefix, string(decodeString), out)
 	return err
 }

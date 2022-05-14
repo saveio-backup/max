@@ -1751,6 +1751,6 @@ func DecryptFileA(file, prefix, password, outPath string, priKey keypair.Private
 	return crypto.CEIESDecryptFile(file, prefix, password, outPath, priKey)
 }
 
-func EncryptFileA(file, password, outPath string, pubKey keypair.PublicKey) error {
+func EncryptFileA(file, password, outPath string, pubKey keypair.PublicKey) (string, error) {
 	return crypto.CEIESEncryptFile(file, password, outPath, pubKey)
 }
