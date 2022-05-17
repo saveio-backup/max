@@ -1,8 +1,9 @@
 package crypto
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
-	"github.com/pborman/uuid"
 	"github.com/saveio/themis/crypto/encrypt"
 	"github.com/saveio/themis/crypto/keypair"
 	"testing"
@@ -24,26 +25,32 @@ func TestAESDecryptFile(t *testing.T) {
 	}
 }
 
-func TestCEIESEncryptFile(t *testing.T) {
-	file := "/Users/smallyu/work/test/file/aaa"
-	s, err := CEIESEncryptFile(file, "pwd", file+".ceies", nil)
-	if err != nil {
-		t.Error(err)
-	}
-	t.Log(s)
-}
-
-func TestCEIESDecryptFile(t *testing.T) {
-	file := "/Users/smallyu/work/test/file/aaa"
-	err := CEIESDecryptFile(file+".ceies", "", "pwd", file+".ceies.dec", nil)
+func TestECIESEncryptFile(t *testing.T) {
+	input := "/Users/smallyu/work/test/file/test1/aaa"
+	output := "/Users/smallyu/work/test/file/test1/aaa.ecies"
+	_, pub, err := keypair.GenerateKeyPairWithSeed(
+		keypair.PK_ECDSA,
+		bytes.NewReader([]byte("f1472f1fc52a8674d361b7e6af23ada4522526aca304b9729c5a9518b909f1b6")),
+		keypair.P256,
+	)
+	err = ECIESEncryptFile(input, output, pub)
 	if err != nil {
 		t.Error(err)
 	}
 }
 
-func TestUUID(t *testing.T) {
-	u := uuid.New()
-	t.Log(u)
+func TestECIESDecryptFile(t *testing.T) {
+	input := "/Users/smallyu/work/test/file/test1/aaa.ecies"
+	output := "/Users/smallyu/work/test/file/test1/aaa.decies"
+	pri, _, err := keypair.GenerateKeyPairWithSeed(
+		keypair.PK_ECDSA,
+		bytes.NewReader([]byte("f1472f1fc52a8674d361b7e6af23ada4522526aca304b9729c5a9518b909f1b6")),
+		keypair.P256,
+	)
+	err = ECIESDecryptFile(input, "", output, pri)
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestEciesLength(t *testing.T) {
@@ -69,8 +76,9 @@ func TestEciesLength(t *testing.T) {
 	}
 	t.Log(len(ct2))
 
-	message3 := []byte("Hello, world. Hello, world. Hello, world.")
-	ct3, err := encrypt.Encrypt(encrypt.AES128withSHA256, pub2, message3, nil, nil)
+	var salt [8]byte
+	_, _ = rand.Read(salt[:])
+	ct3, err := encrypt.Encrypt(encrypt.AES128withSHA256, pub2, salt[:], nil, nil)
 	if err != nil {
 		fmt.Println(err.Error())
 		t.FailNow()

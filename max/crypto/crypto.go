@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/saveio/dsp-go-sdk/types/suffix"
 	"github.com/saveio/themis/crypto/encrypt"
 	"io"
 	"os"
@@ -213,25 +214,70 @@ func AESDecryptFileWriter(inFile *os.File, password string) (io.Writer, error) {
 
 var eciesScheme = encrypt.AES128withSHA256
 
-func CEIESEncryptFile(file string, password, out string, pubKey crypto.PublicKey) (string, error) {
-	ct, err := encrypt.Encrypt(eciesScheme, pubKey, []byte(password), nil, nil)
+func ECIESEncryptFile(file string, out string, pubKey crypto.PublicKey) error {
+	err := os.Remove(out)
 	if err != nil {
-		return "", err
+		// ignore this error
 	}
-	ekey := hex.EncodeToString(ct)
-	err = AESEncryptFile(file, ekey, out)
-	return ekey, err
+	password, err := suffix.GenerateRandomPassword()
+	if err != nil {
+		return err
+	}
+	err = AESEncryptFile(file, string(password), out)
+	if err != nil {
+		return err
+	}
+	ct, err := encrypt.Encrypt(eciesScheme, pubKey, password, nil, nil)
+	if err != nil {
+		return err
+	}
+	// encode convenient for debug
+	ctStr := hex.EncodeToString(ct)
+	err = suffix.AddCipherTextSuffixToFile([]byte(ctStr), out)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func CEIESDecryptFile(file, prefix, password, out string, priKey crypto.PrivateKey) error {
-	eKey, err := encrypt.Decrypt(priKey, []byte(password), nil, nil)
+func ECIESDecryptFile(file, prefix, out string, priKey crypto.PrivateKey) error {
+	// create a temp file because need cut suffix data
+	tmp := file + ".tmp"
+	tmpFile, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
-	decodeString, err := hex.DecodeString(string(eKey))
+	defer tmpFile.Close()
+	openFile, err := os.Open(file)
 	if err != nil {
 		return err
 	}
-	err = AESDecryptFile(file, prefix, string(decodeString), out)
-	return err
+	defer openFile.Close()
+	_, err = io.Copy(tmpFile, openFile)
+	// read cipher text from file
+	ctStr, err := suffix.ReadCipherTextFromFile(tmp)
+	if err != nil {
+		return err
+	}
+	err = suffix.CutCipherTextFromFile(tmp)
+	if err != nil {
+		return err
+	}
+	ct, err := hex.DecodeString(string(ctStr))
+	if err != nil {
+		return err
+	}
+	password, err := encrypt.Decrypt(priKey, ct, nil, nil)
+	if err != nil {
+		return err
+	}
+	err = AESDecryptFile(tmp, prefix, string(password), out)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(tmp)
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -1747,10 +1747,10 @@ func EncryptFile(file, password, outPath string) error {
 	return crypto.AESEncryptFile(file, password, outPath)
 }
 
-func DecryptFileA(file, prefix, password, outPath string, priKey keypair.PrivateKey) error {
-	return crypto.CEIESDecryptFile(file, prefix, password, outPath, priKey)
+func DecryptFileA(file, prefix, outPath string, priKey keypair.PrivateKey) error {
+	return crypto.ECIESDecryptFile(file, prefix, outPath, priKey)
 }
 
-func EncryptFileA(file, password, outPath string, pubKey keypair.PublicKey) (string, error) {
-	return crypto.CEIESEncryptFile(file, password, outPath, pubKey)
+func EncryptFileA(file, outPath string, pubKey keypair.PublicKey) error {
+	return crypto.ECIESEncryptFile(file, outPath, pubKey)
 }
