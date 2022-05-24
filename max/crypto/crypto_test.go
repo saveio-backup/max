@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/types/suffix"
 	"github.com/saveio/themis/crypto/encrypt"
 	"github.com/saveio/themis/crypto/keypair"
 	"testing"
@@ -84,4 +85,24 @@ func TestEciesLength(t *testing.T) {
 		t.FailNow()
 	}
 	t.Log(len(ct3))
+}
+
+func TestGetCipherText(t *testing.T) {
+	_, pub, err := keypair.GenerateKeyPairWithSeed(
+		keypair.PK_ECDSA,
+		bytes.NewReader([]byte("d341a64f05d3f46bd87220d29df183356aa5770ce7cb85cd063707e9fe163d27")),
+		keypair.P256,
+	)
+	password, err := suffix.GenerateRandomPassword()
+	if err != nil {
+		fmt.Println(err.Error())
+		t.FailNow()
+	}
+	t.Log(password)
+	text, err := GetCipherText(pub, password)
+	if err != nil {
+		fmt.Println(err.Error())
+		t.FailNow()
+	}
+	t.Log(text)
 }

@@ -2,6 +2,7 @@ package max
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/saveio/dsp-go-sdk/types/suffix"
@@ -876,12 +877,14 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 						log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
 						continue
 					}
-					text, err := crypto.GetCipherText(pubKey, randomPassword)
+					ct, err := crypto.GetCipherText(pubKey, randomPassword)
 					if err != nil {
 						log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
 						continue
 					}
-					reader = io.MultiReader(reader, strings.NewReader(string(text)))
+					ctStr := hex.EncodeToString(ct)
+					suffixReader := strings.NewReader(ctStr)
+					reader = io.MultiReader(stringReader, encryptedR, suffixReader)
 				}
 			}
 			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
