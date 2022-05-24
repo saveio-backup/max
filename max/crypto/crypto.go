@@ -281,3 +281,11 @@ func ECIESDecryptFile(file, prefix, out string, priKey crypto.PrivateKey) error 
 	}
 	return nil
 }
+
+func GetCipherText(pubKey crypto.PublicKey, password []byte) ([]byte, error) {
+	ct, err := encrypt.Encrypt(eciesScheme, pubKey, password, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return ct, nil
+}

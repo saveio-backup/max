@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/saveio/themis/crypto/keypair"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -606,9 +607,15 @@ func TestNodesFromDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, pub, err := keypair.GenerateKeyPairWithSeed(
+		keypair.PK_ECDSA,
+		bytes.NewReader([]byte("f1472f1fc52a8674d361b7e6af23ada4522526aca304b9729c5a9518b909f1b6")),
+		keypair.P256,
+	)
+
 	fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
-	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/Chain-1/Downloads/AYKnc5VDkvpb5f68XSjTyQzVHU4ZaojGxq/SaveQmb534ZACucuzh7HvkKGoA5dHWbz5zx1zVLNVVSNsy7HVG"
-	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/cnode1/test127"
+	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, pub)
 	if err != nil {
 		t.Fatal(err)
 	}

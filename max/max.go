@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/types/suffix"
 	"io"
 	"io/ioutil"
 	"os"
@@ -453,7 +454,8 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 	return blockHashes, nil
 }
 
-func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool, password string) (blockHashes []string, err error) {
+func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool,
+	password string, pubKey keypair.PublicKey) (blockHashes []string, err error) {
 	dirPath, err := filepath.Abs(path)
 	if err != nil {
 		log.Errorf("[NodesFromDir] get abs path error for %s, err: %s", path, err)
@@ -480,7 +482,7 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
-	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, "/")
+	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, pubKey, "/")
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
 		return nil, err
@@ -781,7 +783,7 @@ func IsDirEmpty(name string) (bool, error) {
 }
 
 func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*helpers.UnixfsNode, dirPath string,
-	dirPrefix string, encrypt bool, password string, path string) error {
+	dirPrefix string, encrypt bool, password string, pubKey keypair.PublicKey, path string) error {
 	// get files from directory
 	files, err := ioutil.ReadDir(dirPath)
 	if err != nil {
@@ -817,7 +819,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				continue
 			}
 			dirPrefixStr := filePrefix.String()
-			err = this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password, path+v.Name()+"/")
+			err = this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password, pubKey, path+v.Name()+"/")
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: GetAllNodesFromDir error : %s", err)
 				return err
@@ -842,16 +844,23 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
 					return err
 				}
-				reader = encryptedR
+				eType := prefix.ENCRYPTTYPE_NONE
+				if password != "" {
+					eType = prefix.ENCRYPTTYPE_AES
+				}
+				if pubKey != nil {
+					eType = prefix.ENCRYPTTYPE_ECIES
+				}
 				// TODO wangyu add owner
 				filePrefix := prefix.FilePrefix{
-					Version:    prefix.PREFIX_VERSION,
-					Encrypt:    encrypt,
-					EncryptPwd: password,
-					Owner:      common.Address{},
-					FileSize:   uint64(0),
-					FileName:   fileName,
-					FileType:   prefix.FILETYPE_FILE,
+					Version:     prefix.PREFIX_VERSION,
+					Encrypt:     encrypt,
+					EncryptPwd:  password,
+					EncryptType: uint8(eType),
+					Owner:       common.Address{},
+					FileSize:    uint64(0),
+					FileName:    fileName,
+					FileType:    prefix.FILETYPE_FILE,
 				}
 				err = filePrefix.MakeSalt()
 				if err != nil {
@@ -859,7 +868,21 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					continue
 				}
 				stringReader := strings.NewReader(filePrefix.String())
-				reader = io.MultiReader(stringReader, reader)
+				reader = io.MultiReader(stringReader, encryptedR)
+				// TODO wangyu add suffix reader
+				if eType == prefix.ENCRYPTTYPE_ECIES {
+					randomPassword, err := suffix.GenerateRandomPassword()
+					if err != nil {
+						log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
+						continue
+					}
+					text, err := crypto.GetCipherText(pubKey, randomPassword)
+					if err != nil {
+						log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
+						continue
+					}
+					reader = io.MultiReader(reader, strings.NewReader(string(text)))
+				}
 			}
 			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 			if err != nil {
