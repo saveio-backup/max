@@ -364,7 +364,8 @@ func ReturnBuffer(buffer []byte) error {
 	return nil
 }
 
-func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (blockHashes []string, err error) {
+func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encrypt bool,
+	password string, pubKey keypair.PublicKey) (blockHashes []string, err error) {
 	absFileName, err := filepath.Abs(fileName)
 	if err != nil {
 		log.Errorf("[NodesFromFile] get abs path error for %s, err: %s", fileName, err)
@@ -381,7 +382,7 @@ func (this *MaxService) NodesFromFile(fileName string, filePrefix string, encryp
 		return this.NodesFromLargeFile(fileName, filePrefix, encrypt, password)
 	}
 
-	root, list, err := this.GetAllNodesFromFile(absFileName, filePrefix, encrypt, password)
+	root, list, err := this.GetAllNodesFromFile(absFileName, filePrefix, encrypt, password, pubKey)
 	if err != nil {
 		log.Errorf("[NodesFromFile] GetAllNodesFromFile error : %s", err)
 		return nil, err
@@ -706,7 +707,8 @@ func (this *MaxService) PrepareHelper(fileName string, filePrefix string, encryp
 	return db, file, nil
 }
 
-func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
+func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, encrypt bool,
+	password string, pubKey keypair.PublicKey) (ipld.Node, []*helpers.UnixfsNode, error) {
 	cidVer := 0
 	hashFunStr := "sha2-256"
 	file, err := os.Open(fileName)
@@ -716,18 +718,44 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 	}
 	defer file.Close()
 	var reader io.Reader = file
+	// Insert prefix to identify a file
+	stringReader := strings.NewReader(filePrefix)
+	reader = io.MultiReader(stringReader, reader)
 	if encrypt {
+		eType := prefix.ENCRYPTTYPE_NONE
+		if password != "" {
+			eType = prefix.ENCRYPTTYPE_AES
+		}
+		if pubKey != nil {
+			eType = prefix.ENCRYPTTYPE_ECIES
+			// password also record in filePrefix
+			pwd, err := suffix.GenerateRandomPassword()
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
+				return nil, nil, err
+			}
+			password = string(pwd)
+		}
 		encryptedR, err := crypto.AESEncryptFileReader(file, password)
 		if err != nil {
 			log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
 			return nil, nil, err
 		}
 		reader = encryptedR
+		// add suffix reader
+		if eType == prefix.ENCRYPTTYPE_ECIES {
+			ct, err := crypto.GetCipherText(pubKey, []byte(password))
+			if err != nil {
+				log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
+				return nil, nil, err
+			}
+			ctStr := hex.EncodeToString(ct)
+			var cipherKey [suffix.SuffixLength]byte
+			copy(cipherKey[:], ctStr)
+			suffixReader := strings.NewReader(string(cipherKey[:]))
+			reader = io.MultiReader(stringReader, encryptedR, suffixReader)
+		}
 	}
-	// Insert prefix to identify a file
-	stringReader := strings.NewReader(filePrefix)
-	reader = io.MultiReader(stringReader, reader)
-
 	chnk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 	if err != nil {
 		log.Errorf("[GetAllNodesFromFile]: create chunker error : %s", err)
@@ -1422,7 +1450,8 @@ func (this *MaxService) checkIfNeedGCNow() (bool, error) {
 }
 
 // add an external file to fs, not using the filestore
-func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
+func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool,
+	password string, pubKey keypair.PublicKey) (ipld.Node, []*helpers.UnixfsNode, error) {
 	if this.IsFileStore() {
 		log.Errorf("[AddFileToFS] not applicable to filestore")
 		return nil, nil, errors.New("AddFileToFS not applicable to filestore")
@@ -1434,7 +1463,7 @@ func (this *MaxService) AddFileToFS(fileName, filePrefix string, encrypt bool, p
 		return nil, nil, err
 	}
 
-	root, nodes, err := this.GetAllNodesFromFile(fileName, filePrefix, encrypt, password)
+	root, nodes, err := this.GetAllNodesFromFile(fileName, filePrefix, encrypt, password, pubKey)
 	if err != nil {
 		log.Errorf("[AddFileToFS] NodesFromFile error : %s", err)
 		return nil, nil, err
