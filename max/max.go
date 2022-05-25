@@ -840,17 +840,24 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			}
 			reader := io.Reader(file)
 			if encrypt {
-				encryptedR, err := crypto.AESEncryptFileReader(file, password)
-				if err != nil {
-					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
-					return err
-				}
 				eType := prefix.ENCRYPTTYPE_NONE
 				if password != "" {
 					eType = prefix.ENCRYPTTYPE_AES
 				}
 				if pubKey != nil {
 					eType = prefix.ENCRYPTTYPE_ECIES
+					// password also record in filePrefix
+					pwd, err := suffix.GenerateRandomPassword()
+					if err != nil {
+						log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
+						continue
+					}
+					password = string(pwd)
+				}
+				encryptedR, err := crypto.AESEncryptFileReader(file, password)
+				if err != nil {
+					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
+					return err
 				}
 				// TODO wangyu add owner
 				filePrefix := prefix.FilePrefix{
@@ -870,20 +877,17 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				}
 				stringReader := strings.NewReader(filePrefix.String())
 				reader = io.MultiReader(stringReader, encryptedR)
-				// TODO wangyu add suffix reader
+				// add suffix reader
 				if eType == prefix.ENCRYPTTYPE_ECIES {
-					randomPassword, err := suffix.GenerateRandomPassword()
-					if err != nil {
-						log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
-						continue
-					}
-					ct, err := crypto.GetCipherText(pubKey, randomPassword)
+					ct, err := crypto.GetCipherText(pubKey, []byte(password))
 					if err != nil {
 						log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
 						continue
 					}
 					ctStr := hex.EncodeToString(ct)
-					suffixReader := strings.NewReader(ctStr)
+					var cipherKey [suffix.SuffixLength]byte
+					copy(cipherKey[:], ctStr)
+					suffixReader := strings.NewReader(string(cipherKey[:]))
 					reader = io.MultiReader(stringReader, encryptedR, suffixReader)
 				}
 			}
