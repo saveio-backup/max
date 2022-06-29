@@ -741,7 +741,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 			log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
 			return nil, nil, err
 		}
-		reader = encryptedR
+		reader = io.MultiReader(stringReader, encryptedR)
 		// add suffix reader
 		if eType == prefix.ENCRYPTTYPE_ECIES {
 			ct, err := crypto.GetCipherText(pubKey, []byte(password))
