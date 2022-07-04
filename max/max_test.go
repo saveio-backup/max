@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/types/prefix"
+	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/crypto/keypair"
 	"io/ioutil"
 	"math/rand"
@@ -469,7 +471,7 @@ func addFileAndCheckFileContent(max *MaxService, initCfg *Config, fileCfg *FileC
 	//var root ipld.Node
 	var hashes []string
 
-	hashes, err = max.NodesFromFile(fname, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	hashes, err = max.NodesFromFile(fname, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +565,7 @@ func TestNodesFromFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +615,24 @@ func TestNodesFromDir(t *testing.T) {
 		keypair.P256,
 	)
 
-	fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
+	//fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
+	a, _ := common.AddressFromBase58("AKvY1iQEquvHHx5EKeSkxmqZQCyQziwCh5")
+	a, _ = common.AddressFromBase58("ANHrMi3T2TApU2Vxh2pxix37SKC7zeoe56")
+	p := prefix.FilePrefix{
+		Version:     0,
+		Encrypt:     false,
+		EncryptPwd:  "",
+		EncryptSalt: [4]byte{},
+		EncryptHash: [32]byte{},
+		Owner:       a,
+		FileSize:    0,
+		FileNameLen: 0,
+		FileName:    "",
+		Reserved:    [4]byte{},
+		FileType:    0,
+		EncryptType: 0,
+	}
+	fileCfg.prefix = p.String()
 	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/test127"
 	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, pub)
 	if err != nil {
@@ -642,7 +661,7 @@ func TestNodesFromFileLarge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password)
+	hashes, err := max.NodesFromFile(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,7 +721,7 @@ func TestNodeFromFileNotExist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = max.NodesFromFile(getCurrentDirectory()+"/"+RandStringBytes(5), RandStringBytes(20), false, "")
+	_, err = max.NodesFromFile(getCurrentDirectory()+"/"+RandStringBytes(5), RandStringBytes(20), false, "", nil)
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -993,7 +1012,7 @@ func TestAddFileBlockStore(t *testing.T) {
 	}
 
 	prefix := RandStringBytes(20)
-	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1030,7 +1049,7 @@ func TestAddFileFileStore(t *testing.T) {
 	}
 
 	prefix := RandStringBytes(20)
-	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1066,7 +1085,7 @@ func TestAddFileFileStoreDuplicateBlocks(t *testing.T) {
 	}
 
 	prefix := RandStringBytes(20)
-	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1155,7 +1174,7 @@ func TestFileStoreMultiPath(t *testing.T) {
 	}
 
 	//add 2nd file with same prefix but differnt path
-	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1217,7 +1236,7 @@ func TestFileStoreMultiPathUpdate(t *testing.T) {
 	}
 
 	//add 2nd file with same prefix but differnt path
-	hashes, err := max.NodesFromFile(fname, prefix, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1521,12 +1540,12 @@ func TestShareBlocksDeleteFile(t *testing.T) {
 	prefix1 := RandStringBytes(20)
 	prefix2 := RandStringBytes(20)
 
-	hashes, err := max.NodesFromFile(fname, prefix1, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix1, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	hashes2, err := max.NodesFromFile(fname2, prefix2, false, "")
+	hashes2, err := max.NodesFromFile(fname2, prefix2, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1609,12 +1628,12 @@ func TestSameFileWithDifferentOwnerDeleteFile(t *testing.T) {
 	prefix1 := RandStringBytes(20)
 	prefix2 := RandStringBytes(20)
 
-	hashes, err := max.NodesFromFile(fname, prefix1, false, "")
+	hashes, err := max.NodesFromFile(fname, prefix1, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	hashes2, err := max.NodesFromFile(fname2, prefix2, false, "")
+	hashes2, err := max.NodesFromFile(fname2, prefix2, false, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2083,7 +2102,7 @@ func TestPutBlockForFileStore(t *testing.T) {
 			}
 
 			prefix2 := RandStringBytes(20)
-			root2, list2, err := max2.GetAllNodesFromFile(fname3, prefix2, false, "")
+			root2, list2, err := max2.GetAllNodesFromFile(fname3, prefix2, false, "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}

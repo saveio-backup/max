@@ -731,7 +731,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 			// password also record in filePrefix
 			pwd, err := suffix.GenerateRandomPassword()
 			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
+				log.Errorf("[GetAllNodesFromFile]: generate random password error : %s", err)
 				return nil, nil, err
 			}
 			password = string(pwd)
@@ -746,7 +746,7 @@ func (this *MaxService) GetAllNodesFromFile(fileName string, filePrefix string, 
 		if eType == prefix.ENCRYPTTYPE_ECIES {
 			ct, err := crypto.GetCipherText(pubKey, []byte(password))
 			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
+				log.Errorf("[GetAllNodesFromFile]: get cipher text error : %s", err)
 				return nil, nil, err
 			}
 			ctStr := hex.EncodeToString(ct)
@@ -832,13 +832,14 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				continue
 			}
 			subRoot := &merkledag.ProtoNode{}
-			// TODO wangyu add owner
+			dirPre := prefix.FilePrefix{}
+			dirPre.ParseFromString(dirPrefix)
 			filePrefix := prefix.FilePrefix{
 				Version:    prefix.PREFIX_VERSION,
 				Encrypt:    encrypt,
 				EncryptPwd: password,
-				Owner:      common.Address{},
-				FileSize:   uint64(0),
+				Owner:      dirPre.Owner,
+				FileSize:   dirPre.FileSize,
 				FileName:   dirName,
 				FileType:   prefix.FILETYPE_DIR,
 			}
@@ -887,14 +888,15 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
 					return err
 				}
-				// TODO wangyu add owner
+				dirPre := prefix.FilePrefix{}
+				dirPre.ParseFromString(dirPrefix)
 				filePrefix := prefix.FilePrefix{
 					Version:     prefix.PREFIX_VERSION,
 					Encrypt:     encrypt,
 					EncryptPwd:  password,
 					EncryptType: uint8(eType),
-					Owner:       common.Address{},
-					FileSize:    uint64(0),
+					Owner:       dirPre.Owner,
+					FileSize:    dirPre.FileSize,
 					FileName:    fileName,
 					FileType:    prefix.FILETYPE_FILE,
 				}
@@ -949,10 +951,10 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
 
 			// debug log
-			// fmt.Println(subRoot.Cid(), fileName)
-			// for _, v := range subRoot.Links() {
-			// 	fmt.Println("  ", v.Cid)
-			// }
+			//fmt.Println(subRoot.Cid(), fileName)
+			//for _, v := range subRoot.Links() {
+			//	fmt.Println("  ", v.Cid)
+			//}
 			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
 			// build struct after save blocks singly
 			err = root.AddNodeLink(path+v.Name(), subRoot)
