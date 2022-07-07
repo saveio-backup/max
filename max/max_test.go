@@ -592,6 +592,63 @@ func TestNodesFromFile(t *testing.T) {
 	}
 }
 
+func TestStore(t *testing.T) {
+	testdir, err := ioutil.TempDir("", "filestore-test")
+
+	filePath := testdir + "/normalfile"
+	fileSize := 1024 * 1024 // 1M
+	err = makeFileWithLen(filePath, uint64(fileSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fileCfg := &FileConfig{testdir, false, 100 * CHUNK_SIZE, RandStringBytes(20), false, "", nil}
+
+	max, err := NewMaxService(&FSConfig{testdir, FS_FILESTORE, CHUNK_SIZE, GC_PERIOD, ""}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, pub, err := keypair.GenerateKeyPairWithSeed(
+		keypair.PK_ECDSA,
+		bytes.NewReader([]byte("f1472f1fc52a8674d361b7e6af23ada4522526aca304b9729c5a9518b909f1b6")),
+		keypair.P256,
+	)
+
+	//fileCfg.prefix = "AAAATg==AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADtpiYzwi+h1c9Ccg7DJuXvtR3BdwAAAAAAAAABA29vbwAAAAAxqJUk"
+	a, _ := common.AddressFromBase58("AKvY1iQEquvHHx5EKeSkxmqZQCyQziwCh5")
+	p := prefix.FilePrefix{
+		Version:     0,
+		Encrypt:     false,
+		EncryptPwd:  "",
+		EncryptSalt: [4]byte{},
+		EncryptHash: [32]byte{},
+		Owner:       a,
+		FileSize:    0,
+		FileNameLen: 0,
+		FileName:    "",
+		Reserved:    [4]byte{},
+		FileType:    0,
+		EncryptType: 0,
+	}
+	fileCfg.prefix = p.String()
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/test137"
+	//fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/Chain-1/Downloads/AZq17wTamrWZHnHgbDhpus4Z1YTnnesNnk/test137"
+	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	//for k, v := range hashes {
+	//	t.Log(k, v)
+	//}
+	decode, err := cid.Decode(hashes[0])
+	block, err := max.GetBlock(decode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(block.RawData())
+}
+
 func TestNodesFromDir(t *testing.T) {
 	testdir, err := ioutil.TempDir("", "filestore-test")
 
@@ -633,7 +690,8 @@ func TestNodesFromDir(t *testing.T) {
 		EncryptType: 0,
 	}
 	fileCfg.prefix = p.String()
-	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/test127"
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/test137"
+	fileCfg.path = "/Users/smallyu/work/gogs/edge-deploy/node1/Chain-1/Downloads/AZq17wTamrWZHnHgbDhpus4Z1YTnnesNnk/test137"
 	hashes, err := max.NodesFromDir(fileCfg.path, fileCfg.prefix, fileCfg.encrypt, fileCfg.password, pub)
 	if err != nil {
 		t.Fatal(err)

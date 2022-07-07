@@ -948,12 +948,12 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			}
 
 			// can't add file prefix to block
-			this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
+			this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
 
-			// debug log
+			// debug wangyu
 			//fmt.Println(subRoot.Cid(), fileName)
 			//for _, v := range subRoot.Links() {
-			//	fmt.Println("  ", v.Cid)
+			//	fmt.Println("  --", v.Cid)
 			//}
 			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
 			// build struct after save blocks singly
@@ -966,10 +966,32 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 		}
 	}
 	// save whole directory with blocks
-	this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
+	this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
 
 	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
 	return nil
+}
+
+func (this *MaxService) saveFileBlocksForDir(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
+	// when encryption is used, cannot only use filestore since we need somewhere to store the
+	// encrypted file, the file is not pinned becasue it will be useless when upload file finish
+	err := this.blockstore.Put(root)
+	if err != nil {
+		log.Errorf("[NodesFromDir] put root to block store error : %s", err)
+		return
+	}
+	for _, node := range list {
+		dagNode, err := node.GetDagNode()
+		if err != nil {
+			log.Errorf("[NodesFromDir] GetDagNode error : %s", err)
+			return
+		}
+		err = this.blockstore.Put(dagNode)
+		if err != nil {
+			log.Errorf("[NodesFromDir] put dagNode to block store error : %s", err)
+			return
+		}
+	}
 }
 
 func (this *MaxService) saveFileBlocks(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
@@ -1109,10 +1131,29 @@ func (this *MaxService) GetBlock(cid *cid.Cid) (blocks.Block, error) {
 	log.Debugf("[GetBlock] get block %s", cid.String())
 	block, err := this.blockstore.Get(cid)
 	if err != nil {
-		log.Warnf("[GetBlock] get error : %s", err)
+		log.Errorf("[GetBlock] get error : %s", err)
 		return nil, err
 	}
 	return block, nil
+}
+
+func (this *MaxService) GetBlockByFileStore(cid *cid.Cid) (blocks.Block, error) {
+	get, err := this.filestore.Get(cid)
+	if err != nil {
+		log.Errorf("[GetBlockByFileStore] get error : %s", err)
+		return nil, err
+	}
+	return get, nil
+}
+
+func (this *MaxService) HasBlock(cid *cid.Cid) (bool, error) {
+	log.Debugf("[HasBlock] has block %s", cid.String())
+	bool, err := this.blockstore.Has(cid)
+	if err != nil {
+		log.Warnf("[HasBlock] error : %s", err)
+		return bool, err
+	}
+	return bool, nil
 }
 
 func (this *MaxService) setFilePrefix(fileName string, filePrefix string) error {
