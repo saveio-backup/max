@@ -973,9 +973,14 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 }
 
 func (this *MaxService) saveFileBlocksForDir(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
+	_, _, err := this.buildFileStoreForFile(fileName, filePrefix, root, list)
+	if err != nil {
+		log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
+		return
+	}
 	// when encryption is used, cannot only use filestore since we need somewhere to store the
 	// encrypted file, the file is not pinned becasue it will be useless when upload file finish
-	err := this.blockstore.Put(root)
+	err = this.blockstore.Put(root)
 	if err != nil {
 		log.Errorf("[NodesFromDir] put root to block store error : %s", err)
 		return
