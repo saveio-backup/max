@@ -484,6 +484,42 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
+	// add dir prefix to root
+	reader := strings.NewReader(dirPrefix)
+	chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
+	if err != nil {
+		log.Errorf("[GetAllNodesFromDir]: create chunker error : %s", err)
+		return nil, err
+	}
+	dagBuilder := &helpers.DagBuilderParams{
+		RawLeaves: true,
+		Prefix: &cid.Prefix{
+			Codec:    cid.DagProtobuf,
+			MhLength: -1,
+			MhType:   mh.SHA2_256,
+			Version:  0,
+		},
+		Maxlinks: helpers.DefaultLinksPerBlock,
+		NoCopy:   false,
+	}
+	db := dagBuilder.New(chunk)
+	var subRoot ipld.Node
+	var subList []*helpers.UnixfsNode
+	subRoot, subList, err = balanced.LayoutAndGetNodes(db)
+	if err != nil {
+		log.Errorf("[GetAllNodesFromDir]: LayoutAndGetNodes error : %s", err)
+		return nil, err
+	}
+	// can't add file prefix to block
+	this.saveFileBlocksForDir(path, "", encrypt, subRoot, subList)
+	// build struct after save blocks singly
+	err = root.AddNodeLink(".SaveioDirPrefix", subRoot)
+	if err != nil {
+		log.Errorf("[GetAllNodesFromDir]: AddNodeLink error : %s", err)
+		return nil, err
+	}
+	list = append(list, subList...)
+
 	err = this.GetAllNodesFromDir(root, list, dirPath, dirPrefix, encrypt, password, pubKey, "/")
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
