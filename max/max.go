@@ -511,7 +511,12 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 		return nil, err
 	}
 	// can't add file prefix to block
-	this.saveFileBlocksForDir(path, "", encrypt, subRoot, subList)
+	// TODO wangyu why ecrypt file specifitly
+	if encrypt {
+		this.saveFileBlocks(path, "", encrypt, subRoot, subList)
+	} else {
+		this.saveFileBlocksForDir(path, "", encrypt, subRoot, subList)
+	}
 	// build struct after save blocks singly
 	err = root.AddNodeLink(".SaveioDirPrefix", subRoot)
 	if err != nil {
@@ -989,7 +994,11 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			}
 
 			// can't add file prefix to block
-			this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
+			if encrypt {
+				this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
+			} else {
+				this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
+			}
 
 			// debug wangyu
 			//fmt.Println(subRoot.Cid(), fileName)
@@ -1008,7 +1017,11 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 		}
 	}
 	// save whole directory with blocks
-	this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
+	if encrypt {
+		this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
+	} else {
+		this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
+	}
 
 	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
 	return nil
