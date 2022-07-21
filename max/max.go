@@ -876,7 +876,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				EncryptPwd: password,
 				Owner:      dirPre.Owner,
 				FileSize:   dirPre.FileSize,
-				FileName:   dirName,
+				FileName:   v.Name(),
 				FileType:   prefix.FILETYPE_DIR,
 			}
 			err = filePrefix.MakeSalt()
@@ -889,6 +889,11 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: GetAllNodesFromDir error : %s", err)
 				return err
+			}
+			// TODO wangyu
+			// there use magic cid because recursive empty dir can't handle currently
+			if subRoot.Cid().String() == "SaveQmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n" {
+				continue
 			}
 			// build struct after save blocks singly
 			err = root.AddNodeLink(path, subRoot)
@@ -933,7 +938,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					EncryptType: uint8(eType),
 					Owner:       dirPre.Owner,
 					FileSize:    dirPre.FileSize,
-					FileName:    fileName,
+					FileName:    v.Name(),
 					FileType:    prefix.FILETYPE_FILE,
 				}
 				err = filePrefix.MakeSalt()
@@ -991,6 +996,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			//for _, v := range subRoot.Links() {
 			//	fmt.Println("  --", v.Cid)
 			//}
+
 			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
 			// build struct after save blocks singly
 			err = root.AddNodeLink(path+v.Name(), subRoot)
