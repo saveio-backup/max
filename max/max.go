@@ -690,6 +690,150 @@ func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, e
 	return blockHashes, nil
 }
 
+func (this *MaxService) NodesFromLargeFileInDir(fileName string, filePrefix string, encrypt bool, password string) (ipld.Node, []*helpers.UnixfsNode, error) {
+	absFileName, err := filepath.Abs(fileName)
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] get abs path error for %s, err: %s", fileName, err)
+		return nil, nil, err
+	}
+
+	db, file, err := this.PrepareHelper(fileName, filePrefix, encrypt, password)
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] fail to prepare DAG builder err: %s", fileName, err)
+		return nil, nil, err
+	}
+	defer file.Close()
+
+	nodeList := make([]*helpers.UnixfsNode, 0)
+	blockHashes := make([]string, 0)
+
+	levels := db.GetMaxlevel() + 1
+	lists := make([][]string, levels)
+
+	nroot := db.NewUnixfsNode()
+	db.SetPosInfo(nroot, 0)
+	db.SetOffset(0)
+	for !db.Done() {
+		log.Debugf("[NodesFromLargeFile]: db offset : %d", db.GetOffset())
+
+		subRoot := db.NewUnixfsNode()
+		subRoot.SetLevel(db.GetMaxlevel())
+		db.SetPosInfo(subRoot, db.GetOffset())
+
+		subList, err := balanced.FillNodeRec(db, subRoot, db.GetMaxlevel(), db.GetOffset())
+		if err != nil {
+			log.Errorf("[NodesFromLargeFile]: FillNodeRec error : %s", err)
+			return nil, nil, err
+		}
+		nodeList = append(nodeList, subList...)
+		log.Debugf("[NodesFromLargeFile]: finish one round FillNodeRec tree size: %d, len(list) : %d", subRoot.FileSize(), len(subList))
+
+		if err := nroot.AddChild(subRoot, db); err != nil {
+			return nil, nil, err
+		}
+
+		if this.SupportFileStore() && !encrypt {
+			out, err := subRoot.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] fail to get Dag node for subroot : %s", err)
+				return nil, nil, err
+			}
+
+			_, _, err = this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), out, subList)
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
+				return nil, nil, err
+			}
+
+			for _, node := range subList {
+				dagNode, err := node.GetDagNode()
+				if err != nil {
+					log.Errorf("[NodesFromLargeFile] GetDagNode error : %s", err)
+					return nil, nil, err
+				}
+
+				lists[node.GetLevel()] = append(lists[node.GetLevel()], dagNode.Cid().String())
+
+				// return memory to mpool!
+				if len(dagNode.Links()) == 0 {
+					mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+				}
+			}
+		}
+		// else
+		for _, node := range subList {
+			dagNode, err := node.GetDagNode()
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] GetDagNode error : %s", err)
+				return nil, nil, err
+			}
+
+			err = this.blockstore.Put(dagNode)
+			if err != nil {
+				log.Errorf("[NodesFromLargeFile] put dagNode to block store error : %s", err)
+				return nil, nil, err
+			}
+
+			//compute hash based on cid
+			lists[node.GetLevel()] = append(lists[node.GetLevel()], dagNode.Cid().String())
+
+			// return memory to mpool!
+			if len(dagNode.Links()) == 0 {
+				mpool.ByteSlicePool.Put(uint32(len(dagNode.RawData())), dagNode.RawData())
+			}
+		} // else end
+
+		// prepare for next round
+		db.SetOffset(db.GetOffset() + subRoot.FileSize())
+	}
+
+	// get final root
+	root, err := nroot.GetDagNode()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// construct block hashes from top level to bottom level
+	blockHashes = append(blockHashes, root.Cid().String())
+	for i := levels - 1; i >= 0; i-- {
+		blockHashes = append(blockHashes, lists[i]...)
+	}
+
+	log.Debugf("[NodesFromLargeFile]: return %d blockHashes", len(blockHashes))
+
+	if this.SupportFileStore() && !encrypt {
+		_, _, err = this.buildFileStoreForFileOffset(absFileName, filePrefix, db.GetOffset(), root, []*helpers.UnixfsNode{})
+		if err != nil {
+			log.Errorf("[NodesFromLargeFile] buildFileStoreForFile error : %s", err)
+			return nil, nil, err
+		}
+	}
+	// else
+	// when encryption is used, cannot only use filestore since we need somewhere to store the
+	// encrypted file, the file is not pinned becasue it will be useless when upload file finish
+	err = this.blockstore.Put(root)
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] put root to block store error : %s", err)
+		return nil, nil, err
+	} // else end
+
+	err = this.PinRoot(context.TODO(), root.Cid())
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] pinroot  error : %s", err)
+		return nil, nil, err
+	}
+
+	rootCid := root.Cid()
+	err = this.fsstore.PutFileBlockHash(root.Cid().String(), &fsstore.FileBlockHash{rootCid.String(), blockHashes})
+	if err != nil {
+		log.Errorf("[NodesFromLargeFile] PutFileBlockHash error for %s, error: %s", rootCid.String(), err)
+		return nil, nil, err
+	}
+
+	log.Debugf("[NodesFromLargeFile] success for fileName : %s, filePrefix : %s, encrypt : %v", fileName, filePrefix, encrypt)
+	return root, nodeList, nil
+}
+
 func (this *MaxService) PrepareHelper(fileName string, filePrefix string, encrypt bool, password string) (*helpers.DagBuilderHelper, *os.File, error) {
 	cidVer := 0
 	hashFunStr := "sha2-256"
@@ -987,10 +1131,20 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 
 			var subRoot ipld.Node
 			var subList []*helpers.UnixfsNode
-			subRoot, subList, err = balanced.LayoutAndGetNodes(db)
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: LayoutAndGetNodes error : %s", err)
-				continue
+
+			stat, err := os.Stat(fileName)
+			if stat.Size() > LARGE_FILE_THRESHOLD {
+				subRoot, subList, err = this.NodesFromLargeFileInDir(fileName, "", encrypt, password)
+				if err != nil {
+					log.Errorf("[GetAllNodesFromDir]: nodes from large file error : %s", err)
+					continue
+				}
+			} else {
+				subRoot, subList, err = balanced.LayoutAndGetNodes(db)
+				if err != nil {
+					log.Errorf("[GetAllNodesFromDir]: LayoutAndGetNodes error : %s", err)
+					continue
+				}
 			}
 
 			// can't add file prefix to block
