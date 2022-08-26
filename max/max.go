@@ -478,7 +478,7 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 	}
 	root := &merkledag.ProtoNode{}
 	list := make([]*helpers.UnixfsNode, 0)
-	_, _, err = this.AddSealingFileToDag(root, list, DirPrefixFileName, dirPrefix)
+	err = this.AddSealingFileToDag(root, list, DirPrefixFileName, dirPrefix, dirPath, encrypt)
 	if err != nil {
 		log.Errorf("[NodesFromDir] AddDirPrefixToDag error : %s", err)
 		return nil, err
@@ -487,13 +487,6 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 	if err != nil {
 		log.Errorf("[NodesFromDir] GetAllNodesFromDir error : %s", err)
 		return nil, err
-	}
-	if root.Cid().String() == EmptyBlockCid {
-		_, _, err := this.AddSealingFileToDag(root, list, DirSealingFileName, EmptyBlockCid)
-		if err != nil {
-			log.Errorf("[NodesFromDir] AddSealingFileToDag error : %s", err)
-			return nil, err
-		}
 	}
 	cids, err := this.GetFileAllCids(context.TODO(), root.Cid())
 	if err != nil {
@@ -513,12 +506,12 @@ func (this *MaxService) NodesFromDir(path string, dirPrefix string, encrypt bool
 }
 
 func (this *MaxService) AddSealingFileToDag(root *merkledag.ProtoNode, list []*helpers.UnixfsNode, fullName string,
-	content string) (ipld.Node, []*helpers.UnixfsNode, error) {
+	content string, dirPath string, encrypt bool) error {
 	reader := strings.NewReader(content)
 	chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
 	if err != nil {
 		log.Errorf("[AddDirPrefixToDag] chunker.FromString error : %s", err)
-		return nil, nil, err
+		return err
 	}
 	dagBuilder := &helpers.DagBuilderParams{
 		RawLeaves: true,
@@ -537,15 +530,20 @@ func (this *MaxService) AddSealingFileToDag(root *merkledag.ProtoNode, list []*h
 	subRoot, subList, err = balanced.LayoutAndGetNodes(db)
 	if err != nil {
 		log.Errorf("[AddDirPrefixToDag] balanced.LayoutAndGetNodes error : %s", err)
-		return nil, nil, err
+		return err
 	}
 	err = root.AddNodeLink(fullName, subRoot)
 	if err != nil {
 		log.Errorf("[GetAllNodesFromDir]: AddNodeLink error : %s", err)
-		return nil, nil, err
+		return err
+	}
+	if encrypt {
+		this.saveFileBlocks(dirPath, "", encrypt, subRoot, subList)
+	} else {
+		this.saveFileBlocksForDir(dirPath, "", encrypt, subRoot, subList)
 	}
 	list = append(list, subList...)
-	return subRoot, subList, nil
+	return nil
 }
 
 func (this *MaxService) NodesFromLargeFile(fileName string, filePrefix string, encrypt bool, password string) (blockHashes []string, err error) {
@@ -1003,8 +1001,9 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 	}
 	for _, v := range files {
 		if v.IsDir() {
-			dirName := filepath.Join(dirPath, v.Name())
+			subDirPath := filepath.Join(dirPath, v.Name())
 			subRoot := &merkledag.ProtoNode{}
+			subList := make([]*helpers.UnixfsNode, 0)
 			dirPre := prefix.FilePrefix{}
 			dirPre.ParseFromString(dirPrefix)
 			filePrefix := prefix.FilePrefix{
@@ -1016,48 +1015,21 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				FileName:   v.Name(),
 				FileType:   prefix.FILETYPE_DIR,
 			}
-			err = filePrefix.MakeSalt()
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
-				continue
-			}
+			_ = filePrefix.MakeSalt()
 			dirPrefixStr := filePrefix.String()
-			err = this.GetAllNodesFromDir(subRoot, list, dirName, dirPrefixStr, encrypt, password, pubKey, path+v.Name()+"/")
+			err = this.GetAllNodesFromDir(subRoot, subList, subDirPath, dirPrefixStr, encrypt, password, pubKey, path+v.Name()+"/")
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: GetAllNodesFromDir error : %s", err)
 				return err
 			}
-
-			if subRoot.Cid().String() == EmptyBlockCid {
-				r, l, err := this.AddSealingFileToDag(subRoot, list, path+v.Name()+"/"+DirSealingFileName, EmptyBlockCid)
-				if err != nil {
-					log.Errorf("[GetAllNodesFromDir]: AddSealingFileToDag error : %s", err)
-					continue
-				}
-				if encrypt {
-					this.saveFileBlocks(dirName+v.Name(), "", encrypt, r, l)
-				} else {
-					this.saveFileBlocksForDir(dirName+v.Name(), "", encrypt, r, l)
-				}
-			}
-			// link name remain empty
-			err = root.AddNodeLink(path, subRoot)
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
-				continue
-			}
-
-			if encrypt {
-				this.saveFileBlocks(dirName, "", encrypt, subRoot, list)
-			} else {
-				this.saveFileBlocksForDir(dirName, "", encrypt, subRoot, list)
-			}
+			_ = root.AddNodeLink(path+v.Name()+"/", subRoot)
+			list = append(list, subList...)
 		} else {
 			fileName := filepath.Join(dirPath, v.Name())
 			file, err := os.Open(fileName)
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: open file error : %s", err)
-				continue
+				return err
 			}
 			reader := io.Reader(file)
 			if encrypt {
@@ -1130,10 +1102,8 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 				NoCopy:   false,
 			}
 			db := dagBuilder.New(chunk)
-
 			var subRoot ipld.Node
 			var subList []*helpers.UnixfsNode
-
 			stat, err := os.Stat(fileName)
 			if stat.Size() > LARGE_FILE_THRESHOLD {
 				subRoot, subList, err = this.NodesFromLargeFileInDir(fileName, "", encrypt, password)
@@ -1148,32 +1118,28 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					continue
 				}
 			}
-
-			// can't add file prefix to block
 			if encrypt {
 				this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
 			} else {
 				this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
 			}
-
-			log.Debugf("Get cid from file in directory: cid root: %s, file path: %s", subRoot.Cid(), fileName)
-			// build struct after save blocks singly
-			err = root.AddNodeLink(path+v.Name(), subRoot)
-			if err != nil {
-				log.Errorf("[GetAllNodesFromDir]: add node link error : %s", err)
-				continue
-			}
+			_ = root.AddNodeLink(path+v.Name(), subRoot)
 			list = append(list, subList...)
 		}
 	}
-	// save whole directory with blocks
+	if root.Cid().String() == EmptyBlockCid {
+		filePath := filepath.Join(dirPath, DirSealingFileName)
+		err := this.AddSealingFileToDag(root, list, path+DirSealingFileName, EmptyBlockCid, filePath, encrypt)
+		if err != nil {
+			log.Errorf("[GetAllNodesFromDir]: AddSealingFileToDag error : %s", err)
+			return err
+		}
+	}
 	if encrypt {
 		this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
 	} else {
 		this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
 	}
-
-	log.Debugf("[GetAllNodesFromDir] success for fileName : %s, filePrefix : %s, encrypt : %v", dirPath, dirPrefix, encrypt)
 	return nil
 }
 
