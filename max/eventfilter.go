@@ -3,6 +3,8 @@ package max
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/consts"
+	"github.com/saveio/themis-go-sdk/common"
 	"reflect"
 	"time"
 
@@ -92,7 +94,15 @@ func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress st
 	// log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
 	var eventRe = make([]map[string]interface{}, 0)
 
-	raws, err := this.chain.GetSmartContractEventsByBlock(blockHeight)
+	var raws []*common.SmartContactEvent
+	var err error
+	switch this.chain.GetChainType() {
+	case consts.DspModeOp:
+		raws, err = this.chain.GetSDK().GetSmartContractEventsByBlock(blockHeight)
+	default:
+		raws, err = this.chain.GetSDK().GetSmartContractEventsByBlock(blockHeight)
+	}
+	//raws, err := this.chain.GetSmartContractEventByBlock(blockHeight)
 	if err != nil {
 		log.Errorf("GetSmartContractEventsByBlock for height %d error %s", blockHeight, err)
 		return nil, err

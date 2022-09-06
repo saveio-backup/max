@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/consts"
+	"github.com/saveio/dsp-go-sdk/core/chain"
 	"io"
 	"io/ioutil"
 	"os"
@@ -60,7 +62,6 @@ import (
 	"github.com/saveio/max/repo/fsrepo"
 	"github.com/saveio/max/thirdparty/verifbs"
 	"github.com/saveio/max/unixfs/archive"
-	sdk "github.com/saveio/themis-go-sdk"
 	fscontract "github.com/saveio/themis-go-sdk/fs"
 	keypair "github.com/saveio/themis/crypto/keypair"
 )
@@ -121,7 +122,7 @@ type MaxService struct {
 	sectorProveTasks         *sync.Map
 	sectorManager            *sector.SectorManager
 	repo                     repo.Repo
-	chain                    *sdk.Chain
+	chain                    *chain.Chain
 	config                   *FSConfig
 	rpcCache                 *Cache
 	pdpQueue                 *PriorityQueue
@@ -182,7 +183,7 @@ func setMaxStorage(repo repo.Repo, maxStorage string) error {
 	return nil
 }
 
-func NewMaxService(config *FSConfig, chain *sdk.Chain) (*MaxService, error) {
+func NewMaxService(config *FSConfig, chain *chain.Chain) (*MaxService, error) {
 	if config.FsType != FS_BLOCKSTORE &&
 		config.FsType != FS_FILESTORE &&
 		config.FsType != (FS_BLOCKSTORE|FS_FILESTORE) {
@@ -1962,14 +1963,19 @@ func (this *MaxService) SetFileBlockHashes(fileHash string, blockHashes []string
 }
 
 func (this *MaxService) getAccoutAddress() common.Address {
-	if this.chain.Native.Fs == nil || this.chain.Native.Fs.Client.GetDefaultAccount() == nil {
+	if this.chain.CurrentAccount() == nil {
 		return common.Address{}
 	}
-	return this.chain.Native.Fs.Client.GetDefaultAccount().Address
+	return this.chain.Address()
 }
 
 func (this *MaxService) getFsContract() *fscontract.Fs {
-	return this.chain.Native.Fs
+	switch this.chain.GetChainType() {
+	case consts.DspModeOp:
+		return this.chain.GetSDK().EVM.Fs
+	default:
+		return this.chain.GetSDK().Native.Fs
+	}
 }
 
 func startPeriodicGC(ctx context.Context, repo repo.Repo, gcPeriod string, pinner pin.Pinner, blockstore bstore.Blockstore) error {

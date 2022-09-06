@@ -2,6 +2,7 @@ package max
 
 import (
 	"fmt"
+	"github.com/saveio/dsp-go-sdk/consts"
 	"github.com/saveio/themis/common"
 	"github.com/saveio/themis/common/log"
 	fs "github.com/saveio/themis/smartcontract/service/native/savefs"
@@ -100,8 +101,7 @@ func (this *MaxService) getFileProveDetails(fileHash string) (*fs.FsProveDetails
 		}
 	*/
 
-	fsContract := this.chain.Native.Fs
-	proveDetails, err := fsContract.GetFileProveDetails(fileHash)
+	proveDetails, err := this.chain.GetFileProveDetails(fileHash)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +116,7 @@ func (this *MaxService) getFileInfo(fileHash string) (*fs.FileInfo, error) {
 		return fileInfo, nil
 	}
 
-	fsContract := this.chain.Native.Fs
-	fileInfo, err = fsContract.GetFileInfo(fileHash)
+	fileInfo, err = this.chain.GetFileInfo(fileHash)
 	if err != nil {
 		return nil, err
 	}
@@ -138,19 +137,28 @@ func (this *MaxService) updateCurrentBlockHeightAndHash(height uint32, blockHash
 func (this *MaxService) getCurrentBlockHeightAndHashFromChainAndUpdateCache() (uint32, common.Uint256, error) {
 	var emptyHash common.Uint256
 
-	fsContract := this.chain.Native.Fs
-
-	height, err := fsContract.Client.GetClient().GetCurrentBlockHeight()
+	height, err := this.chain.GetCurrentBlockHeight()
 	if err != nil {
 		log.Errorf("GetCurrentBlockHeight error : %s", err)
 		return 0, emptyHash, err
 	}
 
-	blockHash, err := fsContract.Client.GetClient().GetBlockHash(height)
-	if err != nil {
-		log.Errorf("GetBlockHash error : %s", err)
-		return 0, emptyHash, err
+	switch this.chain.GetChainType() {
+	case consts.DspModeOp:
+		blockHash, err := this.chain.GetSDK().EVM.Fs.Client.GetClient().GetBlockHash(height)
+		if err != nil {
+			log.Errorf("GetBlockHash error : %s", err)
+			return 0, emptyHash, err
+		}
+		this.updateCurrentBlockHeightAndHash(height, blockHash)
+		return height, blockHash, nil
+	default:
+		blockHash, err := this.chain.GetSDK().Native.Fs.Client.GetClient().GetBlockHash(height)
+		if err != nil {
+			log.Errorf("GetBlockHash error : %s", err)
+			return 0, emptyHash, err
+		}
+		this.updateCurrentBlockHeightAndHash(height, blockHash)
+		return height, blockHash, nil
 	}
-	this.updateCurrentBlockHeightAndHash(height, blockHash)
-	return height, blockHash, nil
 }
