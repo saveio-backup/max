@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 	cid "github.com/saveio/max/Godeps/_workspace/src/gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 	"github.com/saveio/max/max/sector"
 	fscontract "github.com/saveio/themis-go-sdk/fs"
@@ -121,8 +122,9 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 		log.Debugf("try add prove details to cache after success prove")
 		found := false
 		address := this.getAccountAddress()
+		ethAddress := common.Address(this.getAccountETHAddress())
 		for _, detail := range proveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == address.ToBase58() {
+			if detail.WalletAddr.ToBase58() == address.ToBase58() || detail.WalletAddr.ToBase58() == ethAddress.ToBase58() {
 				found = true
 				break
 			}
@@ -427,6 +429,10 @@ func (this *FilePDPItem) getFsContract() *fscontract.Fs {
 
 func (this *FilePDPItem) getAccountAddress() common.Address {
 	return this.getFsContract().Client.GetDefaultAccount().Address
+}
+
+func (this *FilePDPItem) getAccountETHAddress() ethCommon.Address {
+	return this.getFsContract().Client.GetDefaultAccount().EthAddress
 }
 
 func (this *FilePDPItem) shouldSavePdpResult() bool {

@@ -3,8 +3,10 @@ package max
 import (
 	"encoding/json"
 	"fmt"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 	"github.com/saveio/dsp-go-sdk/consts"
 	"github.com/saveio/themis-go-sdk/common"
+	"math/big"
 	"reflect"
 	"time"
 
@@ -91,21 +93,34 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 }
 
 func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress string) ([]map[string]interface{}, error) {
-	// log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
+	//log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
 	var eventRe = make([]map[string]interface{}, 0)
 
 	var raws []*common.SmartContactEvent
 	var err error
 	switch this.chain.GetChainType() {
 	case consts.DspModeOp:
-		raws, err = this.chain.GetSDK().GetSmartContractEventsByBlock(blockHeight)
+		events, err := this.chain.GetSDK().EVM.Fs.GetEventsByBlockHeight(big.NewInt(int64(blockHeight)))
+		if err != nil {
+			log.Errorf("GetSmartContractEventsByBlock for height %d error %s", blockHeight, err)
+			return nil, err
+		}
+		for _, event := range events {
+			raws = append(raws, &common.SmartContactEvent{
+				Notify: []*common.NotifyEventInfo{
+					{
+						ContractAddress: contractAddress,
+						States:          event,
+					},
+				},
+			})
+		}
 	default:
 		raws, err = this.chain.GetSDK().GetSmartContractEventsByBlock(blockHeight)
-	}
-	//raws, err := this.chain.GetSmartContractEventByBlock(blockHeight)
-	if err != nil {
-		log.Errorf("GetSmartContractEventsByBlock for height %d error %s", blockHeight, err)
-		return nil, err
+		if err != nil {
+			log.Errorf("GetSmartContractEventsByBlock for height %d error %s", blockHeight, err)
+			return nil, err
+		}
 	}
 
 	if len(raws) == 0 {
@@ -148,6 +163,9 @@ func (this *MaxService) processEvent(height uint32, event map[string]interface{}
 	parsedEvent["eventName"] = eventName
 	parsedEvent["blockHeight"] = height
 
+	fmt.Println("===234===", eventName, parsedEvent)
+	fmt.Println("===234===2", eventName, event)
+
 	this.notifyChainEvent(parsedEvent)
 
 	switch eventName {
@@ -188,6 +206,7 @@ func (this *MaxService) notifyChainEvent(event map[string]interface{}) {
 }
 
 func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
+
 	walletAddr := event["walletAddr"].(string)
 	sectorId := event["sectorId"].(uint64)
 	size := event["size"].(uint64)
@@ -195,7 +214,8 @@ func (this *MaxService) processCreateSectorEvent(event map[string]interface{}) {
 	isPlots := event["isPlots"].(bool)
 
 	address := this.getAccoutAddress()
-	if walletAddr == address.ToBase58() {
+	ethAddr := ethCommon.BytesToAddress(address[:])
+	if walletAddr == address.ToBase58() || walletAddr == ethAddr.String() {
 		this.notifySectorEvent(&sector.SectorEvent{
 			Event:      sector.SECTOR_EVENT_CREATE,
 			SectorID:   sectorId,
@@ -321,29 +341,48 @@ func parseEvent(event map[string]interface{}) (map[string]interface{}, error) {
 		case "walletAddr":
 			walletAddr, ok := value.(string)
 			if !ok {
-				stopLoop = true
-				break
+				address, ok := value.(ethCommon.Address)
+				if !ok {
+					stopLoop = true
+					break
+				}
+				walletAddr = address.String()
 			}
 			events[key] = walletAddr
 		case "sectorId":
 			sectorId, ok := value.(float64)
 			if !ok {
-				stopLoop = true
-				break
+				tmp, ok := value.(uint64)
+				if !ok {
+					stopLoop = true
+					break
+				} else {
+					sectorId = float64(tmp)
+				}
 			}
 			events[key] = uint64(sectorId)
 		case "size":
 			size, ok := value.(float64)
 			if !ok {
-				stopLoop = true
-				break
+				tmp, ok := value.(uint64)
+				if !ok {
+					stopLoop = true
+					break
+				} else {
+					size = float64(tmp)
+				}
 			}
 			events[key] = uint64(size)
 		case "proveLevel":
 			proveLevel, ok := value.(float64)
 			if !ok {
-				stopLoop = true
-				break
+				tmp, ok := value.(uint8)
+				if !ok {
+					stopLoop = true
+					break
+				} else {
+					proveLevel = float64(tmp)
+				}
 			}
 			events[key] = uint64(proveLevel)
 		case "isPlots":
