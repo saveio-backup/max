@@ -538,11 +538,7 @@ func (this *MaxService) AddSealingFileToDag(root *merkledag.ProtoNode, list []*h
 		log.Errorf("[GetAllNodesFromDir]: AddNodeLink error : %s", err)
 		return err
 	}
-	if encrypt {
-		this.saveFileBlocks(dirPath, "", encrypt, subRoot, subList)
-	} else {
-		this.saveFileBlocksForDir(dirPath, "", encrypt, subRoot, subList)
-	}
+	this.saveFileBlocksForDir(dirPath, "", encrypt, subRoot, subList)
 	list = append(list, subList...)
 	return nil
 }
@@ -1119,11 +1115,7 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					continue
 				}
 			}
-			if encrypt {
-				this.saveFileBlocks(fileName, "", encrypt, subRoot, subList)
-			} else {
-				this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
-			}
+			this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
 			_ = root.AddNodeLink(path+v.Name(), subRoot)
 			list = append(list, subList...)
 		}
@@ -1136,23 +1128,21 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			return err
 		}
 	}
-	if encrypt {
-		this.saveFileBlocks(dirPath, dirPrefix, encrypt, root, list)
-	} else {
-		this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
-	}
+	this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
 	return nil
 }
 
 func (this *MaxService) saveFileBlocksForDir(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
-	_, _, err := this.buildFileStoreForFile(fileName, filePrefix, root, list)
-	if err != nil {
-		log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
-		return
+	if this.SupportFileStore() && !encrypt {
+		_, _, err := this.buildFileStoreForFile(fileName, filePrefix, root, list)
+		if err != nil {
+			log.Errorf("[NodesFromDir] buildFileStoreForFile error : %s", err)
+			return
+		}
 	}
 	// when encryption is used, cannot only use filestore since we need somewhere to store the
 	// encrypted file, the file is not pinned becasue it will be useless when upload file finish
-	err = this.blockstore.Put(root)
+	err := this.blockstore.Put(root)
 	if err != nil {
 		log.Errorf("[NodesFromDir] put root to block store error : %s", err)
 		return
