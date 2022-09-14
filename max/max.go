@@ -1022,64 +1022,21 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			_ = root.AddNodeLink(path+v.Name()+"/", subRoot)
 			list = append(list, subList...)
 		} else {
-			fileName := filepath.Join(dirPath, v.Name())
-			file, err := os.Open(fileName)
+			filePath := filepath.Join(dirPath, v.Name())
+			file, err := os.Open(filePath)
 			if err != nil {
 				log.Errorf("[GetAllNodesFromDir]: open file error : %s", err)
 				return err
 			}
 			reader := io.Reader(file)
+			vName := v.Name()
 			if encrypt {
-				eType := prefix.ENCRYPTTYPE_NONE
-				if password != "" {
-					eType = prefix.ENCRYPTTYPE_AES
-				}
-				if pubKey != nil {
-					eType = prefix.ENCRYPTTYPE_ECIES
-					// password also record in filePrefix
-					pwd, err := suffix.GenerateRandomPassword()
-					if err != nil {
-						log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
-						continue
-					}
-					password = string(pwd)
-				}
-				encryptedR, err := crypto.AESEncryptFileReader(file, password)
+				eType := prefix.GetEncryptType(password, pubKey)
+				vName = prefix.GetFileNameByEncryptType(vName, eType)
+				reader, err = getReaderFromEncryptFile(file, dirPrefix, v.Name(), password, pubKey)
 				if err != nil {
-					log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
+					log.Errorf("[GetAllNodesFromDir]: getReaderFromEncryptFile error : %s", err)
 					return err
-				}
-				dirPre := prefix.FilePrefix{}
-				dirPre.ParseFromString(dirPrefix)
-				filePrefix := prefix.FilePrefix{
-					Version:     prefix.PREFIX_VERSION,
-					Encrypt:     encrypt,
-					EncryptPwd:  password,
-					EncryptType: uint8(eType),
-					Owner:       dirPre.Owner,
-					FileSize:    dirPre.FileSize,
-					FileName:    v.Name(),
-					FileType:    prefix.FILETYPE_FILE,
-				}
-				err = filePrefix.MakeSalt()
-				if err != nil {
-					log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
-					continue
-				}
-				stringReader := strings.NewReader(filePrefix.String())
-				reader = io.MultiReader(stringReader, encryptedR)
-				// add suffix reader
-				if eType == prefix.ENCRYPTTYPE_ECIES {
-					ct, err := crypto.GetCipherText(pubKey, []byte(password))
-					if err != nil {
-						log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
-						continue
-					}
-					ctStr := hex.EncodeToString(ct)
-					var cipherKey [suffix.SuffixLength]byte
-					copy(cipherKey[:], ctStr)
-					suffixReader := strings.NewReader(string(cipherKey[:]))
-					reader = io.MultiReader(stringReader, encryptedR, suffixReader)
 				}
 			}
 			chunk, err := chunker.FromString(reader, fmt.Sprintf("size-%d", this.config.ChunkSize))
@@ -1101,9 +1058,9 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 			db := dagBuilder.New(chunk)
 			var subRoot ipld.Node
 			var subList []*helpers.UnixfsNode
-			stat, err := os.Stat(fileName)
+			stat, err := os.Stat(filePath)
 			if stat.Size() > LARGE_FILE_THRESHOLD {
-				subRoot, subList, err = this.NodesFromLargeFileInDir(fileName, "", encrypt, password)
+				subRoot, subList, err = this.NodesFromLargeFileInDir(filePath, "", encrypt, password)
 				if err != nil {
 					log.Errorf("[GetAllNodesFromDir]: nodes from large file error : %s", err)
 					continue
@@ -1115,8 +1072,8 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 					continue
 				}
 			}
-			this.saveFileBlocksForDir(fileName, "", encrypt, subRoot, subList)
-			_ = root.AddNodeLink(path+v.Name(), subRoot)
+			this.saveFileBlocksForDir(filePath, "", encrypt, subRoot, subList)
+			_ = root.AddNodeLink(path+vName, subRoot)
 			list = append(list, subList...)
 		}
 	}
@@ -1130,6 +1087,57 @@ func (this *MaxService) GetAllNodesFromDir(root *merkledag.ProtoNode, list []*he
 	}
 	this.saveFileBlocksForDir(dirPath, dirPrefix, encrypt, root, list)
 	return nil
+}
+
+func getReaderFromEncryptFile(file *os.File, dirPrefix string, fileName string, password string, pubKey keypair.PublicKey) (io.Reader, error) {
+	var reader io.Reader
+	eType := prefix.GetEncryptType(password, pubKey)
+	if eType == prefix.ENCRYPTTYPE_ECIES {
+		pwd, err := suffix.GenerateRandomPassword()
+		if err != nil {
+			log.Errorf("[GetAllNodesFromDir]: generate random password error : %s", err)
+			return nil, err
+		}
+		password = string(pwd)
+	}
+	encryptedR, err := crypto.AESEncryptFileReader(file, password)
+	if err != nil {
+		log.Errorf("[GetAllNodesFromFile]: AESEncryptFileReader error : %s", err)
+		return nil, err
+	}
+	dirPre := prefix.FilePrefix{}
+	dirPre.ParseFromString(dirPrefix)
+	filePrefix := prefix.FilePrefix{
+		Version:     prefix.PREFIX_VERSION,
+		Encrypt:     true,
+		EncryptPwd:  password,
+		EncryptType: uint8(eType),
+		Owner:       dirPre.Owner,
+		FileSize:    dirPre.FileSize,
+		FileName:    fileName,
+		FileType:    prefix.FILETYPE_FILE,
+	}
+	err = filePrefix.MakeSalt()
+	if err != nil {
+		log.Errorf("[GetAllNodesFromDir]: make salt error : %s", err)
+		return nil, err
+	}
+	stringReader := strings.NewReader(filePrefix.String())
+	reader = io.MultiReader(stringReader, encryptedR)
+	// add suffix reader
+	if eType == prefix.ENCRYPTTYPE_ECIES {
+		ct, err := crypto.GetCipherText(pubKey, []byte(password))
+		if err != nil {
+			log.Errorf("[GetAllNodesFromDir]: get cipher text error : %s", err)
+			return nil, err
+		}
+		ctStr := hex.EncodeToString(ct)
+		var cipherKey [suffix.SuffixLength]byte
+		copy(cipherKey[:], ctStr)
+		suffixReader := strings.NewReader(string(cipherKey[:]))
+		reader = io.MultiReader(stringReader, encryptedR, suffixReader)
+	}
+	return reader, nil
 }
 
 func (this *MaxService) saveFileBlocksForDir(fileName string, filePrefix string, encrypt bool, root ipld.Node, list []*helpers.UnixfsNode) {
