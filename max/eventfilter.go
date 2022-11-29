@@ -3,12 +3,14 @@ package max
 import (
 	"encoding/json"
 	"fmt"
-	ethCommon "github.com/ethereum/go-ethereum/common"
-	"github.com/saveio/dsp-go-sdk/consts"
-	"github.com/saveio/themis-go-sdk/common"
 	"math/big"
 	"reflect"
 	"time"
+
+	ethCommon "github.com/ethereum/go-ethereum/common"
+	"github.com/saveio/dsp-go-sdk/consts"
+	"github.com/saveio/themis-go-sdk/common"
+	"github.com/saveio/themis-go-sdk/fs"
 
 	ldb "github.com/saveio/max/max/leveldbstore"
 	"github.com/saveio/max/max/sector"
@@ -36,8 +38,12 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 
 		fsContractAddr := utils.OntFSContractAddress.ToHexString()
 
+		if this.chain.GetChainType() == consts.DspModeOp {
+			fsContractAddr = fs.FileAddress.String()
+		}
+
 		ticker := time.NewTicker(time.Duration(interval) * time.Second)
-		log.Debugf("start event filter")
+		log.Debugf("start event filter, fsContractAddr %s", fsContractAddr)
 
 		latestHeight, err = this.loadLatestHeight()
 		if err != nil {
@@ -93,7 +99,7 @@ func (this *MaxService) StartEventFilter(interval uint32) error {
 }
 
 func (this *MaxService) getContractEvents(blockHeight uint32, contractAddress string) ([]map[string]interface{}, error) {
-	//log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
+	log.Debugf("getContractEvents for height %d, contractAddress %s", blockHeight, contractAddress)
 	var eventRe = make([]map[string]interface{}, 0)
 
 	var raws []*common.SmartContactEvent
