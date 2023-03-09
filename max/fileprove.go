@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 	"strings"
 	"sync"
 	"time"
@@ -64,7 +65,8 @@ func (this *MaxService) StartPDPVerify(fileHash string) error {
 	} else {
 		var found bool
 		for _, detail := range fileProveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() {
+			if detail.WalletAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() ||
+				ethCommon.BytesToAddress(detail.WalletAddr[:]) == this.chain.CurrentAccount().EthAddress {
 				found = true
 				log.Debugf("[StartPDPVerify] prove detail found with matching address for filehash: %s", fileHash)
 				break
@@ -230,9 +232,9 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 	log.Debugf("[proveFile] first: %v, fileHash : %s", first, fileHash)
 
 	if this.IsScheduledForPdpCalculationOrSubmission(fileHash) {
+		log.Debugf("[proveFile] fileHash %s is scheduled for pdp calculation or submission", fileHash)
 		return nil
 	}
-
 	fileInfo, err := this.getFileInfo(fileHash)
 	if err != nil {
 		log.Errorf("[proveFile] GetFileInfo for fileHash : %s error : %s", fileHash, err)
@@ -296,7 +298,8 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 		}
 
 		for _, detail := range fileProveDetails.ProveDetails {
-			if detail.WalletAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() {
+			if detail.WalletAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() ||
+				ethCommon.BytesToAddress(detail.WalletAddr[:]) == this.chain.CurrentAccount().EthAddress {
 				times = detail.ProveTimes
 				finished = detail.Finished
 				firstProveHeight = detail.BlockHeight
@@ -317,7 +320,8 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 			sectorId := this.sectorManager.GetFileSectorId(fileHash)
 			if sectorId == 0 {
 				for _, sectorRef := range fileInfo.SectorRefs {
-					if sectorRef.NodeAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() {
+					if sectorRef.NodeAddr.ToBase58() == this.chain.CurrentAccount().Address.ToBase58() ||
+						ethCommon.BytesToAddress(sectorRef.NodeAddr[:]) == this.chain.CurrentAccount().EthAddress {
 						// find matching file info, add  to sector
 						_, err = this.sectorManager.AddFileToSector(fileInfo.ProveLevel, fileHash, fileInfo.FileBlockNum, fileInfo.FileBlockSize, sectorRef.SectorID)
 						if err != nil {
@@ -408,7 +412,7 @@ func (this *MaxService) proveFile(first bool, fileHash string) error {
 		log.Errorf("failed to schedule for prove for file %s error %s", fileHash, err)
 		return err
 	}
-	log.Debugf(" schedule file %s for pdp calculation", fileHash)
+	log.Debugf("schedule file %s for pdp calculation", fileHash)
 	return nil
 }
 

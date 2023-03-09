@@ -100,7 +100,7 @@ func (this *FilePDPItem) doPdpSubmission(proveData []byte) ([]byte, error) {
 
 	txHash, err := fsContract.FileProve(fileHash, proveData, height, sectorId)
 	if err != nil {
-		log.Errorf("file prove error : %s", err)
+		log.Errorf("file prove error: %s", err)
 		return nil, err
 	}
 

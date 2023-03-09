@@ -169,9 +169,6 @@ func (this *MaxService) processEvent(height uint32, event map[string]interface{}
 	parsedEvent["eventName"] = eventName
 	parsedEvent["blockHeight"] = height
 
-	fmt.Println("===234===", eventName, parsedEvent)
-	fmt.Println("===234===2", eventName, event)
-
 	this.notifyChainEvent(parsedEvent)
 
 	switch eventName {
