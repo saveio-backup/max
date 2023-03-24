@@ -14,7 +14,7 @@ require (
 	github.com/rs/cors v1.7.0
 	github.com/saveio/dsp-go-sdk v0.0.0-20220928090042-77674439f201
 	github.com/saveio/themis v1.0.175-0.20221129100116-4008d4b1ba7e
-	github.com/saveio/themis-go-sdk v0.0.0-20221129100912-6c2788e7f5ac
+	github.com/saveio/themis-go-sdk v0.0.0-20230314033227-3033a22d3bcd
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	golang.org/x/crypto v0.0.0-20210415154028-4f45737414dc
