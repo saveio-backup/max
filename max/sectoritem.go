@@ -38,6 +38,9 @@ func (this *SectorPDPItem) doPdpCalculation() error {
 	// file that needs to be submitted will need to wait until the candidate list is unlocked to add to candidate list
 	sector.BlockUntilCandidateListEmpty()
 
+	log.Debugf("doPdpCalculation for sector %d, gen challenges param %v, %v, %v, %v", this.SectorId,
+		this.getAccountAddress(), this.BlockHash, uint32(sector.GetTotalBlockCount()), uint32(sector.GetProveBlockNum()))
+
 	// generate challenges
 	challenges := fs.GenChallenge(this.getAccountAddress(), this.BlockHash,
 		uint32(sector.GetTotalBlockCount()), uint32(sector.GetProveBlockNum()))

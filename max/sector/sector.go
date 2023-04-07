@@ -187,6 +187,7 @@ func (this *Sector) AddFileToSector(fileHash string, blockCount uint64, blockSiz
 	})
 	this.TotalFileSize += fileSize
 	this.TotalBlockCount += blockCount
+	log.Debugf("Sector TotalBlockCount changed to %d in AddFileToSector", this.TotalBlockCount)
 
 	err := this.saveFileList()
 	if err != nil {
@@ -216,6 +217,7 @@ func (this *Sector) DeleteFileFromSector(fileHash string) error {
 
 	this.TotalFileSize = this.TotalFileSize - sectorFileInfo.BlockCount*sectorFileInfo.BlockSize
 	this.TotalBlockCount = this.TotalBlockCount - sectorFileInfo.BlockCount
+	log.Debugf("Sector TotalBlockCount changed to %d in DeleteFileFromSector", this.TotalBlockCount)
 
 	this.FileList.Delete(fileHash)
 
@@ -332,6 +334,7 @@ func (this *Sector) MoveCandidateFileToFileList(fileHash string) error {
 
 	this.TotalFileSize += sectorFileInfo.BlockSize * sectorFileInfo.BlockCount
 	this.TotalBlockCount += sectorFileInfo.BlockCount
+	log.Debugf("Sector TotalBlockCount changed to %d in MoveCandidateFileToFileList", this.TotalBlockCount)
 
 	this.CandidateFileList.Delete(fileHash)
 
