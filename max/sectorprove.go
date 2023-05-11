@@ -2,10 +2,11 @@ package max
 
 import (
 	"fmt"
-	"github.com/saveio/max/max/sector"
-	"github.com/saveio/themis/common/log"
 	"sort"
 	"time"
+
+	"github.com/saveio/max/max/sector"
+	"github.com/saveio/themis/common/log"
 )
 
 func (this *MaxService) startSectorProveService() {
@@ -48,6 +49,7 @@ func (this *MaxService) loadSectorProveTasks() error {
 	if err != nil {
 		return err
 	}
+	log.Debugf("[loadSectorProveTasks] sectorIds %v", sectorIds)
 
 	for _, sectorId := range sectorIds {
 		sector := this.sectorManager.GetSectorBySectorId(sectorId)
@@ -61,12 +63,15 @@ func (this *MaxService) loadSectorProveTasks() error {
 			log.Errorf("processCandidateFileSynchronization error %s", err)
 			continue
 		}
-
-		if sector.GetTotalBlockCount() != 0 {
+		blockCount := sector.GetTotalBlockCount()
+		if blockCount != 0 {
+			log.Debugf("add sector %d to prove task", sectorId)
 			err = this.addSectorProveTask(sectorId)
 			if err != nil {
 				return fmt.Errorf("addSectorProveTask error %s", err)
 			}
+		} else {
+			log.Debugf("sector %d has no block, skip", sectorId)
 		}
 	}
 	return nil
@@ -195,4 +200,16 @@ func (this *MaxService) deleteSectorProveTask(sectorId uint64) error {
 	log.Debugf("deleteSectorProveTask for sectorId %d", sectorId)
 	this.sectorProveTasks.Delete(sectorId)
 	return nil
+}
+
+func (this *MaxService) GetLocalSectorFileList(sectorId uint64) ([]string, error) {
+	res := make([]string, 0)
+	list, err := this.sectorManager.LoadSectorFileList(sectorId)
+	if err != nil {
+		return res, err
+	}
+	for _, v := range list.SectorFileInfos {
+		res = append(res, v.FileHash)
+	}
+	return res, err
 }

@@ -30,6 +30,7 @@ func (this *MaxService) processPdpCalculationQueue() {
 		}
 
 		pdpItem := item.Value.(PDPItem)
+		log.Debugf("process pdp item %s", pdpItem.getItemKey())
 
 		itemKey := pdpItem.getItemKey()
 		nextChalHeight := pdpItem.getPdpCalculationHeight()

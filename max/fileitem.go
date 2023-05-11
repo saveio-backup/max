@@ -39,7 +39,7 @@ func (this *FilePDPItem) doPdpCalculation() error {
 	blockHash := this.BlockHash
 	fsContract := this.getFsContract()
 
-	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %d, height : %d",
+	log.Debugf("[doPdpCalculation] fileHash : %s, blockNum : %d, proveBlockNum : %d, fileProveParam : %v, hash : %v, height : %d",
 		fileHash, fileInfo.FileBlockNum, fileInfo.ProveBlockNum, fileInfo.FileProveParam, blockHash.ToHexString(), blockHeight)
 
 	challenges := fsContract.GenChallenge(this.getAccountAddress(), blockHash,

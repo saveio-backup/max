@@ -122,7 +122,7 @@ func (this *SectorManager) saveSectorFileList(sectorId uint64) error {
 	return this.db.PutData(genSectorFileListKey(sectorId), data)
 }
 
-func (this *SectorManager) loadSectorFileList(sectorId uint64) (*DBSectorFileList, error) {
+func (this *SectorManager) LoadSectorFileList(sectorId uint64) (*DBSectorFileList, error) {
 	if this.db == nil {
 		return nil, nil
 	}
@@ -307,7 +307,7 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 			return err
 		}
 
-		fileList, err := this.loadSectorFileList(sectorId)
+		fileList, err := this.LoadSectorFileList(sectorId)
 		if err != nil {
 			return err
 		}
@@ -317,7 +317,9 @@ func (this *SectorManager) LoadSectorsOnStartup() error {
 		}
 
 		// load file list in the sector and add file to sector
+		log.Debugf("LoadSectorsOnStartup, load sector %d, %d", sectorId, len(fileList.SectorFileInfos))
 		for _, fileInfo := range fileList.SectorFileInfos {
+			log.Debugf("LoadSectorsOnStartup, load file %s, blockCount %d", fileInfo.FileHash, fileInfo.BlockCount)
 			_, err = this.AddFileToSector(sectorInfo.ProveLevel, fileInfo.FileHash, fileInfo.BlockCount,
 				fileInfo.BlockSize, sectorId)
 			if err != nil {
