@@ -13,7 +13,7 @@ require (
 	github.com/onsi/gomega v1.13.0
 	github.com/rs/cors v1.7.0
 	github.com/saveio/dsp-go-sdk v0.0.0-20220928090042-77674439f201
-	github.com/saveio/themis v1.0.175-0.20221129100116-4008d4b1ba7e
+	github.com/saveio/themis v1.0.175
 	github.com/saveio/themis-go-sdk v0.0.0-20230314033227-3033a22d3bcd
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
@@ -21,4 +21,13 @@ require (
 	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/cheggaaa/pb.v1 v1.0.28
+)
+
+replace (
+	github.com/saveio/carrier => ../carrier
+	github.com/saveio/dsp-go-sdk => ../dsp-go-sdk
+	github.com/saveio/pylons => ../pylons
+	github.com/saveio/scan => ../scan
+	github.com/saveio/themis-go-sdk => ../themis-go-sdk
+	github.com/saveio/themis => ../themis
 )
